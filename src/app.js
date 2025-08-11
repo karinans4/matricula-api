@@ -1,18 +1,20 @@
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth.routes.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Home y health
-app.get('/', (_req, res) => {
-  res.send('API Matrícula online ✅');
-});
+// 👉 servir carpeta public/
+app.use(express.static('public'));
+
+// (opcional) si quieres mantener /health:
 app.get('/health', (_req, res) => res.send('OK'));
 
-// Rutas
+// Rutas API
 app.use('/api', authRoutes);
 
 export default app;

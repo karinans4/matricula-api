@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ingreso | Matrícula</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="card">
+    <h1>Portal de Matrícula</h1>
+    <p class="sub">Inicia sesión para continuar</p>
+
+    <form id="login-form" class="form">
+      <div class="input">
+        <label for="correo">Correo</label>
+        <input id="correo" type="email" placeholder="karina@demo.com" required />
+      </div>
+
+      <div class="input">
+        <label for="contrasena">Contraseña</label>
+        <input id="contrasena" type="password" placeholder="abc123" required />
+      </div>
+
+      <button class="btn" type="submit">Ingresar</button>
+      <div id="msg" class="msg"></div>
+    </form>
+
+    <div class="footer">
+      <span class="small">Usuario demo:</span>
+      <span class="link">karina@demo.com / abc123</span>
+    </div>
+  </div>
+
+  <!-- 👇 aquí cargas el JS (no pegues <script> dentro del .js) -->
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Panel | Matrícula</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .grid{display:grid;gap:14px}
+    .row{display:flex;gap:10px;justify-content:space-between;align-items:center}
+    .card{max-width:920px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row">
+      <h1>Panel</h1>
+      <button id="logout" class="btn" style="width:auto;background:linear-gradient(135deg,#fca5a5,#ef4444);color:#1f2937">Salir</button>
+    </div>
+    <p class="sub" id="bienvenida"></p>
+
+    <div class="grid">
+      <div>
+        <h3>Accesos rápidos</h3>
+        <ul>
+          <li><a class="link" href="#" id="verPeriodos">Ver periodos activos</a></li>
+          <li><a class="link" href="#" id="verTipos">Ver tipos de matrícula</a></li>
+        </ul>
+      </div>
+      <pre id="result" style="white-space:pre-wrap;background:#0b1220;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.06);"></pre>
+    </div>
+  </div>
+
+  <script>
+    const usuario = JSON.parse(localStorage.getItem('usuario') || 'null');
+    const bienvenida = document.querySelector('#bienvenida');
+    const result = document.querySelector('#result');
+
+    if (!usuario) {
+      window.location.href = '/';
+    } else {
+      bienvenida.textContent = `Hola, ${usuario.nombre} (${usuario.correo})`;
+    }
+
+    document.querySelector('#logout').onclick = () => {
+      localStorage.removeItem('usuario');
+      window.location.href = '/';
+    };
+
+    const API_BASE = location.origin;
+
+    document.querySelector('#verPeriodos').onclick = async (e) => {
+      e.preventDefault();
+      const res = await fetch(`${API_BASE}/api/periodos/activos`);
+      const data = await res.json();
+      result.textContent = JSON.stringify(data, null, 2);
+    };
+
+    document.querySelector('#verTipos').onclick = async (e) => {
+      e.preventDefault();
+      const res = await fetch(`${API_BASE}/api/tipos-matricula`);
+      const data = await res.json();
+      result.textContent = JSON.stringify(data, null, 2);
+    };
+  </script>
+</body>
+</html>
