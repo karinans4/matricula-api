@@ -1,0 +1,159 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Estudiantes</title>
+<link rel="stylesheet" href="/styles.css">
+</head><body>
+  <div class="card" style="max-width:1100px">
+    <div class="row">
+      <h1>Estudiantes</h1>
+      <a class="btn" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub">Registro y mantenimiento de estudiantes</p>
+
+    <form id="f" class="form" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr auto;align-items:end">
+      <div class="input"><label>Nombre</label><input id="nombre" required></div>
+      <div class="input"><label>Apellido</label><input id="apellido"></div>
+      <div class="input"><label>Carnet</label><input id="carnet" required></div>
+      <div class="input"><label>Correo</label><input id="correo" type="email" required></div>
+      <div class="input"><label>Usuario</label><select id="usuario" required></select></div>
+      <div class="input"><label>Plan</label><select id="plan" required></select></div>
+      <button class="btn" type="submit">Guardar</button>
+    </form>
+
+    <div id="msg" class="msg"></div>
+    <div style="height:12px"></div>
+
+    <table id="tbl" style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th>ID</th><th>Nombre</th><th>Apellido</th><th>Carnet</th><th>Correo</th>
+        <th>Usuario</th><th>Plan</th><th>Acciones</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+const API = location.origin;
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+if (!u || u.rol_id !== 1) location.href = '/'; // solo admin
+
+const $ = sel => document.querySelector(sel);
+const tblBody = $('#tbl tbody');
+const f = $('#f');
+const msg = $('#msg');
+
+const nombre = $('#nombre');
+const apellido = $('#apellido');
+const carnet = $('#carnet');
+const correo = $('#correo');
+const usuarioSel = $('#usuario');
+const planSel = $('#plan');
+
+function showMsg(text, ok=false){ msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'error'); }
+function clearMsg(){ msg.textContent=''; msg.className='msg'; }
+function esc(s){ return (s ?? '').toString(); } // ya no embebemos en onclick, no hace falta escapar JS
+
+async function cargarOpciones(){
+  try{
+    const r = await fetch(`${API}/api/estudiantes/opciones`);
+    if(!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    const { usuarios, planes } = await r.json();
+    usuarioSel.innerHTML = usuarios.map(x=>`<option value="${x.id}">${esc(x.label)}</option>`).join('');
+    planSel.innerHTML    = planes.map(x=>`<option value="${x.id}">${esc(x.label)}</option>`).join('');
+  }catch(e){ showMsg('No se pudieron cargar opciones: '+e.message); }
+}
+
+async function listar(){
+  try{
+    const r = await fetch(`${API}/api/estudiantes`);
+    if(!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    const data = await r.json();
+    tblBody.innerHTML = data.map(x => `
+      <tr>
+        <td>${x.id}</td>
+        <td>${esc(x.nombre)}</td>
+        <td>${esc(x.apellido)}</td>
+        <td>${esc(x.carnet)}</td>
+        <td>${esc(x.correo)}</td>
+        <td>${esc(x.usuario_correo || ('#'+x.usuario_id))}</td>
+        <td>${esc(x.plan_nombre || ('Plan '+x.plan_id))}</td>
+        <td>
+          <button class="btn-edit"
+            data-id="${x.id}"
+            data-nombre="${esc(x.nombre)}"
+            data-apellido="${esc(x.apellido||'')}"
+            data-carnet="${esc(x.carnet)}"
+            data-correo="${esc(x.correo)}"
+            data-usuario="${x.usuario_id}"
+            data-plan="${x.plan_id}"
+            style="width:auto;padding:6px 10px">Editar</button>
+          <button class="btn-del" data-id="${x.id}" style="width:auto;padding:6px 10px;margin-left:6px">Eliminar</button>
+        </td>
+      </tr>
+    `).join('');
+  }catch(e){ showMsg('Error al listar: '+e.message); }
+}
+
+// Delegación de eventos para botones Editar/Eliminar
+tblBody.addEventListener('click', async (ev)=>{
+  const t = ev.target;
+  if (t.classList.contains('btn-edit')) {
+    clearMsg();
+    f.dataset.id = t.dataset.id;
+    nombre.value   = t.dataset.nombre;
+    apellido.value = t.dataset.apellido;
+    carnet.value   = t.dataset.carnet;
+    correo.value   = t.dataset.correo;
+    usuarioSel.value = String(t.dataset.usuario);
+    planSel.value    = String(t.dataset.plan);
+    showMsg(`Editando ID ${t.dataset.id}`, true);
+  }
+  if (t.classList.contains('btn-del')) {
+    if (!confirm('¿Eliminar estudiante?')) return;
+    try{
+      const r = await fetch(`${API}/api/estudiantes/${t.dataset.id}`, { method:'DELETE' });
+      const d = await r.json();
+      if(d.deleted) { showMsg('Eliminado', true); listar(); }
+      else showMsg(d.error || 'No se pudo eliminar');
+    }catch(e){ showMsg('Error: '+e.message); }
+  }
+});
+
+// Crear/Actualizar
+f.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  clearMsg();
+  const body = JSON.stringify({
+    nombre: nombre.value.trim(),
+    apellido: apellido.value.trim(),
+    carnet: carnet.value.trim(),
+    correo: correo.value.trim(),
+    usuario_id: Number(usuarioSel.value),
+    plan_id: Number(planSel.value)
+  });
+
+  try{
+    if (f.dataset.id) {
+      const r = await fetch(`${API}/api/estudiantes/${f.dataset.id}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body
+      });
+      const d = await r.json();
+      if (r.ok && d.updated) { showMsg('Actualizado', true); delete f.dataset.id; f.reset(); listar(); }
+      else showMsg(d.error || `Error ${r.status}`);
+    } else {
+      const r = await fetch(`${API}/api/estudiantes`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body
+      });
+      const d = await r.json();
+      if (r.ok && d.id) { showMsg('Creado', true); f.reset(); listar(); }
+      else showMsg(d.error || `Error ${r.status}`);
+    }
+  }catch(e){ showMsg('Error: '+e.message); }
+});
+
+(async function init(){
+  await cargarOpciones();
+  await listar();
+})();
+</script>
+</body></html>
