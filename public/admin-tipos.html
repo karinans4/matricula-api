@@ -1,0 +1,91 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Tipos de Matrícula</title>
+<link rel="stylesheet" href="/styles.css">
+</head><body>
+  <div class="card" style="max-width:960px">
+    <div class="row">
+      <h1>Tipos de matrícula</h1>
+      <a class="btn" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub">Gestión de costos por tipo</p>
+
+    <form id="f" class="form" style="grid-template-columns:2fr 1fr auto;align-items:end">
+      <div class="input"><label>Descripción</label><input id="desc" placeholder="Ordinaria" required></div>
+      <div class="input"><label>Costo</label><input id="costo" type="number" step="0.01" placeholder="15000" required></div>
+      <button class="btn" type="submit">Guardar</button>
+    </form>
+
+    <div style="height:12px"></div>
+    <table id="tbl" style="width:100%;border-collapse:collapse">
+      <thead><tr><th>ID</th><th>Descripción</th><th>Costo</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="msg" class="msg"></div>
+  </div>
+
+<script>
+const API = location.origin;
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+if (!u || u.rol_id !== 1) location.href = '/'; // solo admin
+
+const tbl = document.querySelector('#tbl tbody');
+const msg = document.querySelector('#msg');
+const f = document.querySelector('#f');
+
+async function listar(){
+  const r = await fetch(`${API}/api/tipos-matricula/all`);
+  const data = await r.json();
+  tbl.innerHTML = data.map(x => `
+    <tr>
+      <td>${x.id}</td>
+      <td>${x.descripcion}</td>
+      <td>${Number(x.costo).toFixed(2)}</td>
+      <td>
+        <button onclick="edit(${x.id},'${x.descripcion}',${Number(x.costo)})">Editar</button>
+        <button onclick="delT(${x.id})">Eliminar</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.edit = (id, descripcion, costo)=>{
+  f.dataset.id = id;
+  document.querySelector('#desc').value = descripcion;
+  document.querySelector('#costo').value = costo;
+  msg.textContent = `Editando ID ${id}`;
+};
+
+window.delT = async (id)=>{
+  if(!confirm('¿Eliminar tipo de matrícula?')) return;
+  const r = await fetch(`${API}/api/tipos-matricula/${id}`, { method:'DELETE' });
+  const d = await r.json();
+  msg.textContent = d.deleted ? 'Eliminado' : (d.error || 'No se pudo eliminar');
+  listar();
+};
+
+f.addEventListener('submit', async e=>{
+  e.preventDefault();
+  const body = JSON.stringify({
+    descripcion: document.querySelector('#desc').value.trim(),
+    costo: Number(document.querySelector('#costo').value)
+  });
+
+  if (f.dataset.id) {
+    const r = await fetch(`${API}/api/tipos-matricula/${f.dataset.id}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body
+    });
+    msg.textContent = (await r.json()).updated ? 'Actualizado' : 'Sin cambios';
+    delete f.dataset.id;
+  } else {
+    const r = await fetch(`${API}/api/tipos-matricula`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body
+    });
+    msg.textContent = (await r.json()).id ? 'Creado' : 'Error al crear';
+  }
+  f.reset(); listar();
+});
+
+listar();
+</script>
+</body></html>

@@ -75,6 +75,11 @@
       links.push({ txt:'Subir notas', href:'/prof-notas.html' });
     }
 
+    if (usuario.rol_id === 1) {
+      links.push({ txt:'Config. Académica – Periodos', href:'/admin-periodos.html' });
+      links.push({ txt:'Config. Académica – Tipos de matrícula', href:'/admin-tipos.html' });
+    }
+
     const menu = document.querySelector('#menu');
     menu.innerHTML = links.map(l => `<li><a class="link" href="${l.href}">${l.txt}</a></li>`).join('') || '<li>No hay opciones para tu rol aún.</li>';
 
