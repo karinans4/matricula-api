@@ -1,0 +1,84 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Carreras</title>
+<link rel="stylesheet" href="/styles.css">
+</head><body>
+  <div class="card" style="max-width:960px">
+    <div class="row">
+      <h1>Carreras</h1>
+      <a class="btn" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+
+    <form id="f" class="form" style="grid-template-columns:2fr 1fr auto;align-items:end">
+      <div class="input"><label>Nombre</label><input id="nombre" required></div>
+      <div class="input"><label>Código (opcional)</label><input id="codigo"></div>
+      <button class="btn" type="submit">Guardar</button>
+    </form>
+    <div id="msg" class="msg"></div>
+
+    <div style="height:12px"></div>
+    <table id="tbl" style="width:100%;border-collapse:collapse">
+      <thead><tr><th>ID</th><th>Nombre</th><th>Código</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+const API = location.origin;
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+if (!u || u.rol_id !== 1) location.href = '/';
+
+const $ = s=>document.querySelector(s);
+const f=$('#f'), msg=$('#msg'), tbl=$('#tbl tbody');
+const nombre=$('#nombre'), codigo=$('#codigo');
+
+function show(t, ok=false){ msg.textContent=t; msg.className='msg ' + (ok?'ok':'error'); }
+function clear(){ msg.textContent=''; msg.className='msg'; }
+
+async function listar(){
+  const r = await fetch(`${API}/api/carreras`);
+  const data = await r.json();
+  tbl.innerHTML = data.map(x=>`
+    <tr>
+      <td>${x.id}</td>
+      <td>${x.nombre||''}</td>
+      <td>${x.codigo||''}</td>
+      <td>
+        <button class="e" data-id="${x.id}" data-nombre="${x.nombre||''}" data-codigo="${x.codigo||''}">Editar</button>
+        <button class="d" data-id="${x.id}">Eliminar</button>
+      </td>
+    </tr>`).join('');
+}
+
+tbl.addEventListener('click', async ev=>{
+  const t=ev.target;
+  if(t.classList.contains('e')){
+    f.dataset.id=t.dataset.id;
+    nombre.value=t.dataset.nombre; codigo.value=t.dataset.codigo;
+    show('Editando ID '+t.dataset.id,true);
+  }
+  if(t.classList.contains('d')){
+    if(!confirm('¿Eliminar carrera?')) return;
+    const r=await fetch(`${API}/api/carreras/${t.dataset.id}`,{method:'DELETE'});
+    const d=await r.json(); d.deleted?show('Eliminada',true):show(d.error||'No se pudo eliminar');
+    listar();
+  }
+});
+
+f.addEventListener('submit', async e=>{
+  e.preventDefault(); clear();
+  const body=JSON.stringify({ nombre:nombre.value.trim(), codigo:codigo.value.trim() });
+  if(f.dataset.id){
+    const r=await fetch(`${API}/api/carreras/${f.dataset.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body});
+    const d=await r.json(); d.updated?show('Actualizado',true):show(d.error||'Sin cambios');
+    delete f.dataset.id;
+  } else {
+    const r=await fetch(`${API}/api/carreras`,{method:'POST',headers:{'Content-Type':'application/json'},body});
+    const d=await r.json(); d.id?show('Creado',true):show(d.error||'Error');
+  }
+  f.reset(); listar();
+});
+
+listar();
+</script>
+</body></html>
