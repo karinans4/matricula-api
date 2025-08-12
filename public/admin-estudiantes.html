@@ -10,12 +10,36 @@
     </div>
     <p class="sub">Registro y mantenimiento de estudiantes</p>
 
+    <!-- FORM: crear/editar estudiante -->
     <form id="f" class="form" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr auto;align-items:end">
       <div class="input"><label>Nombre</label><input id="nombre" required></div>
       <div class="input"><label>Apellido</label><input id="apellido"></div>
       <div class="input"><label>Carnet</label><input id="carnet" required></div>
-      <div class="input"><label>Correo</label><input id="correo" type="email" required></div>
-      <div class="input"><label>Usuario</label><select id="usuario" required></select></div>
+      <div class="input"><label>Correo (estudiante)</label><input id="correo" type="email" required></div>
+
+      <!-- Selector de usuario existente -->
+      <div class="input" id="wrapUsuarioSel">
+        <label>Usuario (existente)</label>
+        <select id="usuario"></select>
+      </div>
+
+      <!-- Toggle: crear usuario nuevo -->
+      <div class="input">
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="crearUsuario"> Crear nuevo usuario
+        </label>
+      </div>
+
+      <!-- Campos visibles solo si crearUsuario = true -->
+      <div class="input" id="wrapUsuarioCorreo" style="display:none">
+        <label>Correo (nuevo usuario)</label>
+        <input id="usuarioCorreo" type="email" />
+      </div>
+      <div class="input" id="wrapUsuarioPass" style="display:none">
+        <label>Contraseña (nuevo usuario)</label>
+        <input id="usuarioPass" type="text" />
+      </div>
+
       <div class="input"><label>Plan</label><select id="plan" required></select></div>
       <button class="btn" type="submit">Guardar</button>
     </form>
@@ -23,6 +47,7 @@
     <div id="msg" class="msg"></div>
     <div style="height:12px"></div>
 
+    <!-- TABLA -->
     <table id="tbl" style="width:100%;border-collapse:collapse">
       <thead><tr>
         <th>ID</th><th>Nombre</th><th>Apellido</th><th>Carnet</th><th>Correo</th>
@@ -47,11 +72,26 @@ const apellido = $('#apellido');
 const carnet = $('#carnet');
 const correo = $('#correo');
 const usuarioSel = $('#usuario');
+const crearUsuarioChk = $('#crearUsuario');
+const usuarioCorreo = $('#usuarioCorreo');
+const usuarioPass = $('#usuarioPass');
 const planSel = $('#plan');
+
+const wrapUsuarioSel = $('#wrapUsuarioSel');
+const wrapUsuarioCorreo = $('#wrapUsuarioCorreo');
+const wrapUsuarioPass = $('#wrapUsuarioPass');
 
 function showMsg(text, ok=false){ msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'error'); }
 function clearMsg(){ msg.textContent=''; msg.className='msg'; }
-function esc(s){ return (s ?? '').toString(); } // ya no embebemos en onclick, no hace falta escapar JS
+function esc(s){ return (s ?? '').toString(); }
+
+// Toggle crear usuario
+crearUsuarioChk.addEventListener('change', ()=>{
+  const creating = crearUsuarioChk.checked;
+  wrapUsuarioSel.style.display = creating ? 'none' : '';
+  wrapUsuarioCorreo.style.display = creating ? '' : 'none';
+  wrapUsuarioPass.style.display = creating ? '' : 'none';
+});
 
 async function cargarOpciones(){
   try{
@@ -94,7 +134,7 @@ async function listar(){
   }catch(e){ showMsg('Error al listar: '+e.message); }
 }
 
-// Delegación de eventos para botones Editar/Eliminar
+// Delegación de eventos para editar/eliminar
 tblBody.addEventListener('click', async (ev)=>{
   const t = ev.target;
   if (t.classList.contains('btn-edit')) {
@@ -106,6 +146,8 @@ tblBody.addEventListener('click', async (ev)=>{
     correo.value   = t.dataset.correo;
     usuarioSel.value = String(t.dataset.usuario);
     planSel.value    = String(t.dataset.plan);
+    crearUsuarioChk.checked = false;
+    crearUsuarioChk.dispatchEvent(new Event('change'));
     showMsg(`Editando ID ${t.dataset.id}`, true);
   }
   if (t.classList.contains('btn-del')) {
@@ -113,45 +155,62 @@ tblBody.addEventListener('click', async (ev)=>{
     try{
       const r = await fetch(`${API}/api/estudiantes/${t.dataset.id}`, { method:'DELETE' });
       const d = await r.json();
-      if(d.deleted) { showMsg('Eliminado', true); listar(); }
-      else showMsg(d.error || 'No se pudo eliminar');
+      d.deleted ? (showMsg('Eliminado', true), listar()) : showMsg(d.error || 'No se pudo eliminar');
     }catch(e){ showMsg('Error: '+e.message); }
   }
 });
 
 // Crear/Actualizar
 f.addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  clearMsg();
-  const body = JSON.stringify({
+  e.preventDefault(); clearMsg();
+
+  const creatingUser = crearUsuarioChk.checked;
+  const payload = {
     nombre: nombre.value.trim(),
     apellido: apellido.value.trim(),
     carnet: carnet.value.trim(),
     correo: correo.value.trim(),
-    usuario_id: Number(usuarioSel.value),
     plan_id: Number(planSel.value)
-  });
+  };
+
+  if (creatingUser) {
+    payload.crear_usuario = true;
+    payload.usuario_correo = usuarioCorreo.value.trim();
+    payload.usuario_contrasena = usuarioPass.value.trim();
+  } else {
+    payload.usuario_id = Number(usuarioSel.value);
+  }
 
   try{
     if (f.dataset.id) {
+      // Para editar exigimos usuario existente (no alternar a "crear" en edición)
+      if (!payload.usuario_id) return showMsg('Para editar, seleccione un usuario existente.');
       const r = await fetch(`${API}/api/estudiantes/${f.dataset.id}`, {
-        method:'PUT', headers:{'Content-Type':'application/json'}, body
+        method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
       });
       const d = await r.json();
-      if (r.ok && d.updated) { showMsg('Actualizado', true); delete f.dataset.id; f.reset(); listar(); }
-      else showMsg(d.error || `Error ${r.status}`);
+      if (r.ok && d.updated) {
+        showMsg('Actualizado', true);
+        delete f.dataset.id; f.reset();
+        crearUsuarioChk.checked = false; crearUsuarioChk.dispatchEvent(new Event('change'));
+        listar();
+      } else showMsg(d.error || `Error ${r.status}`);
     } else {
       const r = await fetch(`${API}/api/estudiantes`, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
       });
       const d = await r.json();
-      if (r.ok && d.id) { showMsg('Creado', true); f.reset(); listar(); }
-      else showMsg(d.error || `Error ${r.status}`);
+      if (r.ok && d.id) {
+        showMsg('Creado', true); f.reset();
+        crearUsuarioChk.checked = false; crearUsuarioChk.dispatchEvent(new Event('change'));
+        listar();
+      } else showMsg(d.error || `Error ${r.status}`);
     }
   }catch(e){ showMsg('Error: '+e.message); }
 });
 
 (async function init(){
+  crearUsuarioChk.dispatchEvent(new Event('change'));
   await cargarOpciones();
   await listar();
 })();
