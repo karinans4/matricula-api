@@ -17,6 +17,8 @@ app.use(express.json());
 
 app.use(express.static('public'));
 
+app.get('/health', (req, res) => res.send('OK'));
+
 // Rutas API
 app.use('/api', authRoutes);
 app.use('/api', periodosRoutes); 
