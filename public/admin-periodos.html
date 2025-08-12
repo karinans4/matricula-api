@@ -1,0 +1,90 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Periodos</title>
+<link rel="stylesheet" href="/styles.css">
+</head><body>
+  <div class="card" style="max-width:960px">
+    <div class="row">
+      <h1>Configuración académica</h1>
+      <a class="btn" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub">Gestión de periodos</p>
+
+    <form id="f" class="form" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end">
+      <div class="input"><label>Nombre</label><input id="nombre" placeholder="2025-2" required></div>
+      <div class="input"><label>Año</label><input id="anio" type="number" placeholder="2025" required></div>
+      <div class="input"><label>Activo</label><input id="activo" type="checkbox"></div>
+      <button class="btn" type="submit">Guardar</button>
+    </form>
+
+    <div style="height:12px"></div>
+    <table id="tbl" style="width:100%;border-collapse:collapse">
+      <thead><tr><th style="text-align:left">ID</th><th>Nombre</th><th>Año</th><th>Activo</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="msg" class="msg"></div>
+  </div>
+
+<script>
+const API = location.origin;
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+if (!u || u.rol_id !== 1) location.href = '/'; // solo admin
+
+const tbl = document.querySelector('#tbl tbody');
+const msg = document.querySelector('#msg');
+const f = document.querySelector('#f');
+
+async function listar(){
+  const r = await fetch(`${API}/api/periodos`);
+  const data = await r.json();
+  tbl.innerHTML = data.map(x => `
+    <tr>
+      <td>${x.id}</td>
+      <td>${x.nombre}</td>
+      <td>${x.anio}</td>
+      <td>${x.activo ? 'Sí' : 'No'}</td>
+      <td>
+        <button onclick="edit(${x.id},'${x.nombre}',${x.anio},${x.activo?1:0})">Editar</button>
+        <button onclick="delP(${x.id})">Eliminar</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+window.edit = (id,nombre,anio,activo)=>{
+  f.dataset.id = id;
+  document.querySelector('#nombre').value = nombre;
+  document.querySelector('#anio').value = anio;
+  document.querySelector('#activo').checked = !!activo;
+  msg.textContent = `Editando ID ${id}`;
+};
+
+window.delP = async (id)=>{
+  if(!confirm('¿Eliminar periodo?')) return;
+  const r = await fetch(`${API}/api/periodos/${id}`, { method:'DELETE' });
+  const d = await r.json();
+  msg.textContent = d.deleted ? 'Eliminado' : (d.error || 'No se pudo eliminar');
+  listar();
+};
+
+f.addEventListener('submit', async e=>{
+  e.preventDefault();
+  const body = JSON.stringify({
+    nombre: document.querySelector('#nombre').value.trim(),
+    anio: Number(document.querySelector('#anio').value),
+    activo: document.querySelector('#activo').checked
+  });
+  if (f.dataset.id) {
+    const r = await fetch(`${API}/api/periodos/${f.dataset.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body });
+    msg.textContent = (await r.json()).updated ? 'Actualizado' : 'Sin cambios';
+    delete f.dataset.id;
+  } else {
+    const r = await fetch(`${API}/api/periodos`, { method:'POST', headers:{'Content-Type':'application/json'}, body });
+    msg.textContent = (await r.json()).id ? 'Creado' : 'Error al crear';
+  }
+  f.reset(); listar();
+});
+
+listar();
+</script>
+</body></html>

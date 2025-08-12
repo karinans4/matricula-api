@@ -9,6 +9,7 @@
     .grid{display:grid;gap:14px}
     .row{display:flex;gap:10px;justify-content:space-between;align-items:center}
     .card{max-width:920px}
+    ul{margin:8px 0;padding-left:18px}
   </style>
 </head>
 <body>
@@ -21,47 +22,76 @@
 
     <div class="grid">
       <div>
-        <h3>Accesos rápidos</h3>
+        <h3>Navegación</h3>
+        <!-- menú dinámico por rol -->
+        <ul id="menu"></ul>
+
+        <h3 style="margin-top:18px">Accesos rápidos (demo)</h3>
         <ul>
           <li><a class="link" href="#" id="verPeriodos">Ver periodos activos</a></li>
           <li><a class="link" href="#" id="verTipos">Ver tipos de matrícula</a></li>
         </ul>
       </div>
+
       <pre id="result" style="white-space:pre-wrap;background:#0b1220;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.06);"></pre>
     </div>
   </div>
 
   <script>
+    const API = location.origin;
     const usuario = JSON.parse(localStorage.getItem('usuario') || 'null');
-    const bienvenida = document.querySelector('#bienvenida');
-    const result = document.querySelector('#result');
 
+    // Guard: si no hay sesión, volver al login
     if (!usuario) {
       window.location.href = '/';
-    } else {
-      bienvenida.textContent = `Hola, ${usuario.nombre} (${usuario.correo})`;
     }
 
+    // Bienvenida
+    document.querySelector('#bienvenida').textContent =
+      `Hola, ${usuario.nombre} (${usuario.correo})`;
+
+    // Cerrar sesión
     document.querySelector('#logout').onclick = () => {
       localStorage.removeItem('usuario');
       window.location.href = '/';
     };
 
-    const API_BASE = location.origin;
+    // Navegación por rol (ajusta ids si tus roles son distintos)
+    // 1=Admin, 2=Profesor, 3=Estudiante
+    const links = [];
+    if (usuario.rol_id === 1) { // Admin
+      links.push({ txt:'Config. Académica (Periodos y Costos)', href:'/admin-periodos.html' });
+      // Estos los iremos creando después:
+      // links.push({ txt:'Profesores', href:'/admin-profesores.html' });
+      // links.push({ txt:'Planes y Materias', href:'/admin-planes.html' });
+      // links.push({ txt:'Usuarios y Roles', href:'/admin-usuarios.html' });
+    }
+    if (usuario.rol_id === 3) { // Estudiante
+      links.push({ txt:'Matrícula de materias', href:'/estu-matricula.html' });
+      links.push({ txt:'Mis materias y notas', href:'/estu-notas.html' });
+      links.push({ txt:'Pago de matrícula', href:'/estu-pago.html' });
+    }
+    if (usuario.rol_id === 2) { // Profesor
+      links.push({ txt:'Subir notas', href:'/prof-notas.html' });
+    }
 
-    document.querySelector('#verPeriodos').onclick = async (e) => {
-      e.preventDefault();
-      const res = await fetch(`${API_BASE}/api/periodos/activos`);
-      const data = await res.json();
-      result.textContent = JSON.stringify(data, null, 2);
-    };
+    const menu = document.querySelector('#menu');
+    menu.innerHTML = links.map(l => `<li><a class="link" href="${l.href}">${l.txt}</a></li>`).join('') || '<li>No hay opciones para tu rol aún.</li>';
 
-    document.querySelector('#verTipos').onclick = async (e) => {
+    // Accesos rápidos de demo
+    const result = document.querySelector('#result');
+
+    document.querySelector('#verPeriodos')?.addEventListener('click', async (e)=>{
       e.preventDefault();
-      const res = await fetch(`${API_BASE}/api/tipos-matricula`);
-      const data = await res.json();
-      result.textContent = JSON.stringify(data, null, 2);
-    };
+      const r = await fetch(`${API}/api/periodos/activos`);
+      result.textContent = JSON.stringify(await r.json(), null, 2);
+    });
+
+    document.querySelector('#verTipos')?.addEventListener('click', async (e)=>{
+      e.preventDefault();
+      const r = await fetch(`${API}/api/tipos-matricula`);
+      result.textContent = JSON.stringify(await r.json(), null, 2);
+    });
   </script>
 </body>
 </html>
