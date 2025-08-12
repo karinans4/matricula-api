@@ -1,0 +1,126 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Grupos (Materias impartidas)</title>
+<link rel="stylesheet" href="/styles.css">
+</head><body>
+  <div class="card" style="max-width:1200px">
+    <div class="row">
+      <h1>Grupos</h1>
+      <a class="btn" id="volver" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub">Crear grupos por periodo/profesor, cupos y horario</p>
+
+    <form id="f" class="form" style="grid-template-columns:2fr 1.2fr 1.2fr .8fr 1.2fr auto;align-items:end">
+      <div class="input"><label>Materia</label><select id="materia" required></select></div>
+      <div class="input"><label>Profesor</label><select id="profesor" required></select></div>
+      <div class="input"><label>Periodo</label><select id="periodo" required></select></div>
+      <div class="input"><label>Cupo máximo</label><input id="cupo" type="number" min="0" required></div>
+      <div class="input"><label>Horario</label><input id="horario" placeholder="Lun 18:00-20:00"></div>
+      <button class="btn" type="submit">Guardar</button>
+    </form>
+    <div id="msg" class="msg"></div>
+
+    <div style="height:12px"></div>
+    <table id="tbl" style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th>ID</th><th>Materia</th><th>Profesor</th><th>Periodo</th>
+        <th>Cupo máx</th><th>Cupo actual</th><th>Horario</th><th>Acciones</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+const API = location.origin;
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+if (!u || u.rol_id !== 1) location.href = '/';
+
+const $=s=>document.querySelector(s);
+const f=$('#f'), msg=$('#msg'), tbl=$('#tbl tbody');
+const materia=$('#materia'), profesor=$('#profesor'), periodo=$('#periodo'), cupo=$('#cupo'), horario=$('#horario');
+
+function show(t,ok=false){ msg.textContent=t; msg.className='msg '+(ok?'ok':'error'); }
+
+// warm-up volver
+const volver = document.getElementById('volver');
+volver.addEventListener('click', async (e)=>{
+  e.preventDefault();
+  for (let i=0;i<3;i++){ try{ const r=await fetch('/health',{cache:'no-store'}); if(r.ok) break; }catch{} await new Promise(r=>setTimeout(r,1200)); }
+  location.href = volver.getAttribute('href');
+});
+
+async function cargarOpciones(){
+  const r = await fetch(`${API}/api/grupos/opciones`);
+  const { materias, profesores, periodos } = await r.json();
+  materia.innerHTML   = materias.map(x=>`<option value="${x.id}">${x.label}</option>`).join('');
+  profesor.innerHTML  = profesores.map(x=>`<option value="${x.id}">${x.label}</option>`).join('');
+  periodo.innerHTML   = periodos.map(x=>`<option value="${x.id}">${x.label}</option>`).join('');
+}
+
+async function listar(){
+  const r = await fetch(`${API}/api/grupos`);
+  const data = await r.json();
+  tbl.innerHTML = data.map(x=>`
+    <tr>
+      <td>${x.id}</td>
+      <td>${x.materia_codigo} - ${x.materia_nombre}</td>
+      <td>${x.profesor_nombre} ${x.profesor_apellido||''}</td>
+      <td>${x.periodo_nombre} (${x.periodo_anio})</td>
+      <td>${x.cupo_maximo}</td>
+      <td>${x.cupo_actual}</td>
+      <td>${x.horario||''}</td>
+      <td>
+        <button class="e" data-id="${x.id}"
+          data-m="${x.materia_id}" data-p="${x.profesor_id}" data-per="${x.periodo_id}"
+          data-c="${x.cupo_maximo}" data-h="${x.horario||''}">Editar</button>
+        <button class="d" data-id="${x.id}">Eliminar</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+tbl.addEventListener('click', async ev=>{
+  const t=ev.target;
+  if(t.classList.contains('e')){
+    f.dataset.id = t.dataset.id;
+    materia.value  = t.dataset.m;
+    profesor.value = t.dataset.p;
+    periodo.value  = t.dataset.per;
+    cupo.value     = t.dataset.c;
+    horario.value  = t.dataset.h;
+    show('Editando ID '+t.dataset.id, true);
+  }
+  if(t.classList.contains('d')){
+    if(!confirm('¿Eliminar grupo?')) return;
+    const r=await fetch(`${API}/api/grupos/${t.dataset.id}`,{method:'DELETE'});
+    const d=await r.json(); d.deleted?show('Eliminado',true):show(d.error||'No se pudo eliminar');
+    listar();
+  }
+});
+
+f.addEventListener('submit', async e=>{
+  e.preventDefault();
+  const body = JSON.stringify({
+    materia_id: Number(materia.value),
+    profesor_id: Number(profesor.value),
+    periodo_id: Number(periodo.value),
+    cupo_maximo: Number(cupo.value),
+    horario: horario.value.trim()
+  });
+  if (f.dataset.id){
+    const r=await fetch(`${API}/api/grupos/${f.dataset.id}`,{ method:'PUT', headers:{'Content-Type':'application/json'}, body });
+    const d=await r.json(); d.updated?show('Actualizado',true):show(d.error||'Sin cambios');
+    delete f.dataset.id; f.reset(); listar();
+  } else {
+    const r=await fetch(`${API}/api/grupos`,{ method:'POST', headers:{'Content-Type':'application/json'}, body });
+    const d=await r.json(); d.id?show('Creado',true):show(d.error||'Error');
+    f.reset(); listar();
+  }
+});
+
+(async function init(){
+  await cargarOpciones();
+  await listar();
+})();
+</script>
+</body></html>

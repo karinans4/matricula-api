@@ -1,0 +1,207 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Materias</title>
+<link rel="stylesheet" href="/styles.css">
+</head><body>
+  <div class="card" style="max-width:1200px">
+    <div class="row">
+      <h1>Materias</h1>
+      <a class="btn" id="volver" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub">CRUD de materias + configuración de requisitos/correquisitos</p>
+
+    <form id="f" class="form" style="grid-template-columns:1fr .6fr .6fr 1fr auto;align-items:end">
+      <div class="input"><label>Nombre</label><input id="nombre" required></div>
+      <div class="input"><label>Créditos</label><input id="creditos" type="number" min="0" required></div>
+      <div class="input"><label>Código</label><input id="codigo" required></div>
+      <div class="input"><label>Plan</label><select id="plan" required></select></div>
+      <button class="btn" type="submit">Guardar</button>
+    </form>
+    <div id="msg" class="msg"></div>
+
+    <div style="height:12px"></div>
+    <table id="tbl" style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th>ID</th><th>Código</th><th>Nombre</th><th>Créditos</th><th>Carrera / Plan</th><th>Acciones</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <div id="panel" style="margin-top:16px;display:none">
+      <h3>Configurar requisitos/correquisitos para: <span id="matTitulo"></span></h3>
+      <div class="row" style="gap:16px;flex-wrap:wrap">
+        <div class="card" style="flex:1">
+          <h4>Requisitos</h4>
+          <div class="row">
+            <select id="reqSel" style="flex:1"></select>
+            <button class="btn" id="addReq" style="width:auto">Agregar</button>
+          </div>
+          <ul id="reqList"></ul>
+        </div>
+        <div class="card" style="flex:1">
+          <h4>Correquisitos</h4>
+          <div class="row">
+            <select id="coSel" style="flex:1"></select>
+            <button class="btn" id="addCo" style="width:auto">Agregar</button>
+          </div>
+          <ul id="coList"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API = location.origin;
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+if (!u || u.rol_id !== 1) location.href = '/';
+
+const $=s=>document.querySelector(s);
+const f=$('#f'), msg=$('#msg'), tbl=$('#tbl tbody'), panel=$('#panel');
+const nombre=$('#nombre'), creditos=$('#creditos'), codigo=$('#codigo'), plan=$('#plan');
+const matTitulo=$('#matTitulo'), reqSel=$('#reqSel'), coSel=$('#coSel'), reqList=$('#reqList'), coList=$('#coList');
+
+function show(t,ok=false){ msg.textContent=t; msg.className='msg '+(ok?'ok':'error'); }
+function clear(){ msg.textContent=''; msg.className='msg'; }
+
+// warm-up para volver
+const volver = document.getElementById('volver');
+volver.addEventListener('click', async (e)=>{
+  e.preventDefault();
+  for (let i=0;i<3;i++){ try{ const r=await fetch('/health',{cache:'no-store'}); if(r.ok) break; }catch{} await new Promise(r=>setTimeout(r,1200)); }
+  location.href = volver.getAttribute('href');
+});
+
+async function cargarPlanes(){
+  const r = await fetch(`${API}/api/materias/opciones`);
+  const { planes } = await r.json();
+  plan.innerHTML = planes.map(x=>`<option value="${x.id}">${x.label}</option>`).join('');
+}
+
+async function listar(){
+  const r = await fetch(`${API}/api/materias`);
+  const data = await r.json();
+  tbl.innerHTML = data.map(x=>`
+    <tr>
+      <td>${x.id}</td>
+      <td>${x.codigo}</td>
+      <td>${x.nombre}</td>
+      <td>${x.creditos}</td>
+      <td>${x.carrera} / Plan ${x.plan_id} (${x.plan_version})</td>
+      <td>
+        <button class="e" data-id="${x.id}" data-n="${x.nombre}" data-c="${x.creditos}" data-co="${x.codigo}" data-p="${x.plan_id}">Editar</button>
+        <button class="r" data-id="${x.id}" data-p="${x.plan_id}" data-n="${x.codigo} - ${x.nombre}">Requisitos</button>
+        <button class="d" data-id="${x.id}">Eliminar</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+tbl.addEventListener('click', async ev=>{
+  const t=ev.target;
+  if(t.classList.contains('e')){
+    f.dataset.id=t.dataset.id;
+    nombre.value=t.dataset.n; creditos.value=t.dataset.c; codigo.value=t.dataset.co; plan.value=t.dataset.p;
+    show('Editando ID '+t.dataset.id, true);
+  }
+  if(t.classList.contains('d')){
+    if(!confirm('¿Eliminar materia?')) return;
+    const r=await fetch(`${API}/api/materias/${t.dataset.id}`,{method:'DELETE'});
+    const d=await r.json(); d.deleted?show('Eliminada',true):show(d.error||'No se pudo eliminar');
+    panel.style.display='none'; listar();
+  }
+  if(t.classList.contains('r')){
+    await abrirPanel(Number(t.dataset.id), Number(t.dataset.p), t.dataset.n);
+  }
+});
+
+async function abrirPanel(materiaId, planId, titulo){
+  panel.style.display='block';
+  panel.dataset.mid = materiaId;
+  matTitulo.textContent = titulo;
+
+  // carga combos de materias del mismo plan
+  const ro = await fetch(`${API}/api/materias/opciones?plan_id=${planId}`);
+  const opo = await ro.json();
+  const opts = opo.materias.filter(x=> x.id != materiaId);
+  reqSel.innerHTML = opts.map(x=>`<option value="${x.id}">${x.label}</option>`).join('');
+  coSel.innerHTML  = reqSel.innerHTML;
+
+  // listar actuales
+  const [r1, r2] = await Promise.all([
+    fetch(`${API}/api/materias/${materiaId}/requisitos`),
+    fetch(`${API}/api/materias/${materiaId}/correquisitos`)
+  ]);
+  const reqs = await r1.json(); const cos = await r2.json();
+
+  reqList.innerHTML = reqs.map(x=>`<li>${x.codigo} - ${x.nombre} <button class="rm-req" data-id="${x.id}">Quitar</button></li>`).join('');
+  coList .innerHTML = cos .map(x=>`<li>${x.codigo} - ${x.nombre} <button class="rm-co"  data-id="${x.id}">Quitar</button></li>`).join('');
+}
+
+$('#addReq').addEventListener('click', async ()=>{
+  const mid = Number(panel.dataset.mid);
+  const rid = Number(reqSel.value);
+  const r = await fetch(`${API}/api/materias/${mid}/requisitos`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ requisito_id: rid })
+  });
+  const d = await r.json();
+  if (r.ok && d.id){ show('Requisito agregado', true); abrirPanel(mid, Number(plan.value), matTitulo.textContent); }
+  else show(d.error || 'Error al agregar requisito');
+});
+
+$('#addCo').addEventListener('click', async ()=>{
+  const mid = Number(panel.dataset.mid);
+  const cid = Number(coSel.value);
+  const r = await fetch(`${API}/api/materias/${mid}/correquisitos`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ correquisito_id: cid })
+  });
+  const d = await r.json();
+  if (r.ok && d.id){ show('Correquisito agregado', true); abrirPanel(mid, Number(plan.value), matTitulo.textContent); }
+  else show(d.error || 'Error al agregar correquisito');
+});
+
+reqList.addEventListener('click', async (ev)=>{
+  if(!ev.target.classList.contains('rm-req')) return;
+  const id = Number(ev.target.dataset.id);
+  const r = await fetch(`${API}/api/materias/${panel.dataset.mid}/requisitos/${id}`, { method:'DELETE' });
+  const d = await r.json();
+  d.deleted ? (show('Requisito quitado', true), ev.target.parentElement.remove())
+            : show(d.error || 'No se pudo quitar');
+});
+
+coList.addEventListener('click', async (ev)=>{
+  if(!ev.target.classList.contains('rm-co')) return;
+  const id = Number(ev.target.dataset.id);
+  const r = await fetch(`${API}/api/materias/${panel.dataset.mid}/correquisitos/${id}`, { method:'DELETE' });
+  const d = await r.json();
+  d.deleted ? (show('Correquisito quitado', true), ev.target.parentElement.remove())
+            : show(d.error || 'No se pudo quitar');
+});
+
+// crear/editar materia
+f.addEventListener('submit', async e=>{
+  e.preventDefault(); clear();
+  const body = JSON.stringify({
+    nombre: nombre.value.trim(),
+    creditos: Number(creditos.value),
+    codigo: codigo.value.trim(),
+    plan_id: Number(plan.value)
+  });
+  if (f.dataset.id){
+    const r = await fetch(`${API}/api/materias/${f.dataset.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body });
+    const d = await r.json(); d.updated?show('Actualizada',true):show(d.error||'Sin cambios');
+    delete f.dataset.id; f.reset(); listar();
+  } else {
+    const r = await fetch(`${API}/api/materias`, { method:'POST', headers:{'Content-Type':'application/json'}, body });
+    const d = await r.json(); d.id?show('Creada',true):show(d.error||'Error');
+    f.reset(); listar();
+  }
+});
+
+(async function init(){
+  await cargarPlanes();
+  await listar();
+})();
+</script>
+</body></html>

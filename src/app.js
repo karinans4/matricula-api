@@ -8,6 +8,8 @@ import profesoresRoutes from './routes/profesores.routes.js';
 import estudiantesRoutes from './routes/estudiantes.routes.js';
 import carrerasRoutes from './routes/carreras.routes.js';
 import planesRoutes from './routes/planes.routes.js';
+import materiasRoutes from './routes/materias.routes.js';
+import gruposRoutes from './routes/grupos.routes.js';
 
 
 import path from 'path';
@@ -21,7 +23,6 @@ app.use(express.static('public'));
 
 app.get('/health', (req, res) => res.send('OK'));
 
-// Rutas API
 app.use('/api', authRoutes);
 app.use('/api', periodosRoutes); 
 app.use('/api', catalogosRoutes);
@@ -30,9 +31,8 @@ app.use('/api', profesoresRoutes);
 app.use('/api', estudiantesRoutes);
 app.use('/api', carrerasRoutes);
 app.use('/api', planesRoutes);
-
-
-
+app.use('/api', materiasRoutes);
+app.use('/api', gruposRoutes);
 
 export default app;
 
