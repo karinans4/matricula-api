@@ -4,7 +4,6 @@ import authRoutes from './routes/auth.routes.js';
 import periodosRoutes from './routes/periodos.routes.js'; 
 import catalogosRoutes from './routes/catalogos.routes.js';
 import tiposRoutes from './routes/tipos.routes.js';
-import catalogosRoutes from './routes/catalogos.routes.js';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,7 +19,6 @@ app.use('/api', authRoutes);
 app.use('/api', periodosRoutes); 
 app.use('/api', catalogosRoutes);
 app.use('/api', tiposRoutes);
-app.use('/api', catalogosRoutes);
 
 
 export default app;
