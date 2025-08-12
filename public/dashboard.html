@@ -23,7 +23,6 @@
     <div class="grid">
       <div>
         <h3>Navegación</h3>
-        <!-- menú dinámico por rol -->
         <ul id="menu"></ul>
 
         <h3 style="margin-top:18px">Accesos rápidos (demo)</h3>
@@ -56,13 +55,10 @@
       window.location.href = '/';
     };
 
-    // Navegación por rol (ajusta ids si tus roles son distintos)
-    // 1=Admin, 2=Profesor, 3=Estudiante
     const links = [];
     if (usuario.rol_id === 1) { // Admin
       links.push({ txt:'Config. Académica (Periodos y Costos)', href:'/admin-periodos.html' });
-      // Estos los iremos creando después:
-      // links.push({ txt:'Profesores', href:'/admin-profesores.html' });
+      links.push({ txt:'Profesores (CRUD)', href:'/admin-profesores.html' }); // ← agregado aquí
       // links.push({ txt:'Planes y Materias', href:'/admin-planes.html' });
       // links.push({ txt:'Usuarios y Roles', href:'/admin-usuarios.html' });
     }

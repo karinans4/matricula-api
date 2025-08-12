@@ -1,0 +1,91 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin – Profesores</title>
+<link rel="stylesheet" href="/styles.css">
+</head><body>
+  <div class="card" style="max-width:960px">
+    <div class="row">
+      <h1>Profesores</h1>
+      <a class="btn" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub">Registro y mantenimiento de profesores</p>
+
+    <form id="f" class="form" style="grid-template-columns:1fr 1fr 1.4fr auto;align-items:end">
+      <div class="input"><label>Nombre</label><input id="nombre" required></div>
+      <div class="input"><label>Apellido</label><input id="apellido"></div>
+      <div class="input"><label>Correo</label><input id="correo" type="email" required></div>
+      <button class="btn" type="submit">Guardar</button>
+    </form>
+
+    <div style="height:12px"></div>
+    <table id="tbl" style="width:100%;border-collapse:collapse">
+      <thead><tr><th>ID</th><th>Nombre</th><th>Apellido</th><th>Correo</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="msg" class="msg"></div>
+  </div>
+
+<script>
+const API = location.origin;
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+if (!u || u.rol_id !== 1) location.href = '/'; // solo admin
+
+const tbl = document.querySelector('#tbl tbody');
+const msg = document.querySelector('#msg');
+const f = document.querySelector('#f');
+const nombre = document.querySelector('#nombre');
+const apellido = document.querySelector('#apellido');
+const correo = document.querySelector('#correo');
+
+async function listar(){
+  const r = await fetch(`${API}/api/profesores`);
+  const data = await r.json();
+  tbl.innerHTML = data.map(x => `
+    <tr>
+      <td>${x.id}</td>
+      <td>${x.nombre}</td>
+      <td>${x.apellido || ''}</td>
+      <td>${x.correo}</td>
+      <td>
+        <button onclick="edit(${x.id},'${escapeHtml(x.nombre)}','${escapeHtml(x.apellido||'')}','${escapeHtml(x.correo)}')">Editar</button>
+        <button onclick="delP(${x.id})">Eliminar</button>
+      </td>
+    </tr>
+  `).join('');
+}
+function escapeHtml(s){ return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;"); }
+
+window.edit = (id,n,a,c)=>{
+  f.dataset.id = id;
+  nombre.value = n;
+  apellido.value = a;
+  correo.value = c;
+  msg.textContent = `Editando ID ${id}`;
+};
+
+window.delP = async (id)=>{
+  if(!confirm('¿Eliminar profesor?')) return;
+  const r = await fetch(`${API}/api/profesores/${id}`, { method:'DELETE' });
+  const d = await r.json();
+  msg.textContent = d.deleted ? 'Eliminado' : (d.error || 'No se pudo eliminar');
+  listar();
+};
+
+f.addEventListener('submit', async e=>{
+  e.preventDefault();
+  const body = JSON.stringify({ nombre: nombre.value.trim(), apellido: apellido.value.trim(), correo: correo.value.trim() });
+
+  if (f.dataset.id) {
+    const r = await fetch(`${API}/api/profesores/${f.dataset.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body });
+    msg.textContent = (await r.json()).updated ? 'Actualizado' : 'Sin cambios';
+    delete f.dataset.id;
+  } else {
+    const r = await fetch(`${API}/api/profesores`, { method:'POST', headers:{'Content-Type':'application/json'}, body });
+    msg.textContent = (await r.json()).id ? 'Creado' : 'Error al crear';
+  }
+  f.reset(); listar();
+});
+
+listar();
+</script>
+</body></html>
