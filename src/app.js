@@ -11,7 +11,7 @@ import planesRoutes from './routes/planes.routes.js';
 import materiasRoutes from './routes/materias.routes.js';
 import gruposRoutes from './routes/grupos.routes.js';
 import matriculaRoutes from './routes/matricula.routes.js';
-
+import ofertaRoutes from './routes/oferta.routes.js';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -35,6 +35,7 @@ app.use('/api', planesRoutes);
 app.use('/api', materiasRoutes);
 app.use('/api', gruposRoutes);
 app.use('/api', matriculaRoutes);
+app.use('/api', ofertaRoutes);
 
 
 export default app;

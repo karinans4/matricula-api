@@ -1,28 +1,36 @@
 import { pool } from '../config/db.js';
 
-// Usa el SP existente sp_registrar_matricula
+/** Ejecuta múltiples sentencias y te da el último SELECT como objeto fila */
+const runMultiAndPickLastRow = async (sql, params = []) => {
+  const [results] = await pool.query(sql, params);
+  // results es un array por cada statement; el ÚLTIMO es el SELECT final
+  const last = results[results.length - 1];
+  // last es un array de filas; toma la primera
+  return (Array.isArray(last) && last[0]) ? last[0] : null;
+};
+
 export const crearMatricula = async ({ estudiante_id, periodo_id, tipo_matricula_id }) => {
   const sql = `
     SET @matricula_id := 0; SET @ok := 0; SET @msg := '';
     CALL sp_registrar_matricula(?,?,?, @matricula_id, @ok, @msg);
     SELECT @matricula_id AS matricula_id, @ok AS ok, @msg AS mensaje;
   `;
-  const [ , , [out] ] = await pool.query(sql, [estudiante_id, periodo_id, tipo_matricula_id]);
-  return out[0]; // {matricula_id, ok, mensaje}
+  const out = await runMultiAndPickLastRow(sql, [estudiante_id, periodo_id, tipo_matricula_id]);
+  if (!out) return { ok: 0, mensaje: 'Sin respuesta del procedimiento' };
+  return out; // { matricula_id, ok, mensaje }
 };
 
-// Usa el SP existente sp_agregar_detalle_matricula (valida cupo/requisitos/correquisitos)
 export const agregarDetalle = async ({ matricula_id, materia_impartida_id }) => {
   const sql = `
     SET @ok := 0; SET @msg := '';
     CALL sp_agregar_detalle_matricula(?, ?, @ok, @msg);
     SELECT @ok AS ok, @msg AS mensaje;
   `;
-  const [ , , [out] ] = await pool.query(sql, [matricula_id, materia_impartida_id]);
-  return out[0]; // {ok, mensaje}
+  const out = await runMultiAndPickLastRow(sql, [matricula_id, materia_impartida_id]);
+  if (!out) return { ok: 0, mensaje: 'Sin respuesta del procedimiento' };
+  return out; // { ok, mensaje }
 };
 
-// Listar materias inscritas en una matrícula (encabezado simple)
 export const listarDetalle = async (matricula_id) => {
   const [rows] = await pool.query(`
     SELECT dm.id AS detalle_id,
