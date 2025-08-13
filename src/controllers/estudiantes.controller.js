@@ -36,3 +36,13 @@ export const getOpciones = async (_req, res) => {
   try { res.json(await svc.opciones()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 };
+
+export const getByUsuario = async (req, res) => {
+  try {
+    const row = await svc.byUsuario(Number(req.params.usuario_id));
+    if (!row) return res.status(404).json({ error: 'Estudiante no encontrado' });
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+};

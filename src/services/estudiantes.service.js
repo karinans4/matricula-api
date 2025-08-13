@@ -1,5 +1,7 @@
 import { pool } from '../config/db.js';
 import * as repo from '../repositories/estudiantes.repo.js';
+export const byUsuario = (usuario_id) => repo.getByUsuarioId(usuario_id);
+
 
 export const listar = () => repo.list();
 

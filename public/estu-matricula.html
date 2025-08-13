@@ -1,0 +1,193 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Estudiante – Matrícula</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .grid{display:grid;gap:14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .pill{font-size:.8rem;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+</style>
+</head><body>
+  <div class="card" style="max-width:1200px">
+    <div class="row" style="justify-content:space-between">
+      <h1>Matrícula de materias</h1>
+      <a class="btn" id="volver" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub" id="bienvenida"></p>
+
+    <!-- Paso 1: elegir periodo y tipo -->
+    <div class="card" style="background:transparent">
+      <h3>Configurar matrícula</h3>
+      <div class="row">
+        <div class="input">
+          <label>Periodo</label>
+          <select id="periodo"></select>
+        </div>
+        <div class="input">
+          <label>Tipo de matrícula</label>
+          <select id="tipo"></select>
+        </div>
+        <button class="btn" id="btnCrear">Usar/crear matrícula</button>
+        <span id="matInfo" class="pill"></span>
+      </div>
+      <div id="msg" class="msg"></div>
+    </div>
+
+    <!-- Paso 2: oferta de grupos -->
+    <div class="card" style="background:transparent">
+      <h3>Oferta disponible</h3>
+      <table>
+        <thead><tr>
+          <th>Cod</th><th>Materia</th><th>Profesor</th>
+          <th>Horario</th><th>Cupo</th><th></th>
+        </tr></thead>
+        <tbody id="oferta"></tbody>
+      </table>
+    </div>
+
+    <!-- Paso 3: materias ya inscritas -->
+    <div class="card" style="background:transparent">
+      <h3>Mis materias en esta matrícula</h3>
+      <table>
+        <thead><tr>
+          <th>Cod</th><th>Materia</th><th>Profesor</th><th>Horario</th>
+        </tr></thead>
+        <tbody id="inscritas"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+const API = location.origin;
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+if (!u || u.rol_id !== 3) location.href='/'; // solo estudiante
+
+document.getElementById('bienvenida').textContent = `Hola, ${u.nombre} (${u.correo})`;
+
+const $=s=>document.querySelector(s);
+const periodoSel=$('#periodo'), tipoSel=$('#tipo'), ofertaT=$('#oferta'), inscritasT=$('#inscritas');
+const btnCrear=$('#btnCrear'), matInfo=$('#matInfo'), msg=$('#msg');
+
+let estudiante, plan_id=null, matricula_id=null;
+
+function show(t, ok=false){ msg.textContent=t; msg.className='msg '+(ok?'ok':'error'); }
+function clearMsg(){ msg.textContent=''; msg.className='msg'; }
+
+// warm-up al volver
+const volver = document.getElementById('volver');
+volver.addEventListener('click', async (e)=>{
+  e.preventDefault();
+  for(let i=0;i<3;i++){ try{ const r=await fetch('/health',{cache:'no-store'}); if(r.ok) break; }catch{} await new Promise(r=>setTimeout(r,1200)); }
+  location.href = volver.getAttribute('href');
+});
+
+async function fetchJSON(url, options){
+  const r = await fetch(url, options);
+  const ct = r.headers.get('content-type')||'';
+  const data = ct.includes('application/json') ? await r.json() : null;
+  if(!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+  return data;
+}
+
+async function cargarBasicos(){
+  // estudiante por usuario
+  estudiante = await fetchJSON(`${API}/api/estudiantes/by-usuario/${u.id}`);
+  plan_id = estudiante.plan_id;
+
+  // periodos activos
+  const periodos = await fetchJSON(`${API}/api/periodos/activos`);
+  periodoSel.innerHTML = (periodos||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.anio||p.year||''})</option>`).join('');
+
+  // tipos matrícula
+  const tipos = await fetchJSON(`${API}/api/tipos-matricula`);
+  tipoSel.innerHTML = (tipos||[]).map(t=>`<option value="${t.id}">${t.descripcion} – ₡${Number(t.costo).toFixed(2)}</option>`).join('');
+}
+
+async function cargarOferta(){
+  if(!plan_id) return;
+  const pid = periodoSel.value;
+  const data = await fetchJSON(`${API}/api/materias-impartidas?periodo_id=${pid}&plan_id=${plan_id}`);
+  ofertaT.innerHTML = (data||[]).map(g=>`
+    <tr>
+      <td>${g.codigo}</td>
+      <td>${g.materia}</td>
+      <td>${g.profesor}</td>
+      <td>${g.horario||''}</td>
+      <td>${g.cupo_actual}/${g.cupo_maximo}</td>
+      <td><button class="btn insc" data-id="${g.grupo_id}" ${g.cupo_actual>=g.cupo_maximo?'disabled':''}>Inscribir</button></td>
+    </tr>
+  `).join('') || `<tr><td colspan="6">No hay grupos para tu plan en este periodo.</td></tr>`;
+}
+
+async function cargarInscritas(){
+  if(!matricula_id) { inscritasT.innerHTML = '<tr><td colspan="4">Aún no has creado la matrícula.</td></tr>'; return; }
+  const det = await fetchJSON(`${API}/api/matricula/${matricula_id}/detalle`);
+  inscritasT.innerHTML = (det||[]).map(x=>`
+    <tr>
+      <td>${x.codigo}</td>
+      <td>${x.nombre}</td>
+      <td>${x.profesor_nombre} ${x.profesor_apellido||''}</td>
+      <td>${x.horario||''}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="4">Sin materias aún.</td></tr>`;
+}
+
+btnCrear.addEventListener('click', async ()=>{
+  clearMsg();
+  try{
+    const body = {
+      estudiante_id: estudiante.id,
+      periodo_id: Number(periodoSel.value),
+      tipo_matricula_id: Number(tipoSel.value)
+    };
+    const out = await fetchJSON(`${API}/api/matricula/crear`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    if (out.ok==1 || out.ok===1) {
+      matricula_id = out.matricula_id;
+      matInfo.textContent = `Matrícula #${matricula_id} (Pendiente)`;
+      show(out.mensaje || 'Matrícula lista', true);
+      await cargarInscritas();
+    } else {
+      // algunos SP podrían devolver ok=0 pero con un matricula_id existente; intenta usarlo si viene
+      if (out.matricula_id) {
+        matricula_id = out.matricula_id;
+        matInfo.textContent = `Matrícula #${matricula_id}`;
+      }
+      show(out.mensaje || 'No se pudo crear la matrícula');
+    }
+  } catch(e){ show(e.message); }
+});
+
+ofertaT.addEventListener('click', async (ev)=>{
+  const t = ev.target;
+  if (!t.classList.contains('insc')) return;
+  if (!matricula_id) { show('Primero crea/usa la matrícula.', false); return; }
+
+  const grupo_id = Number(t.dataset.id);
+  try{
+    const out = await fetchJSON(`${API}/api/matricula/agregar-detalle`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ matricula_id, materia_impartida_id: grupo_id })
+    });
+    if (out.ok==1 || out.ok===1){
+      show(out.mensaje || 'Materia agregada', true);
+      await Promise.all([cargarOferta(), cargarInscritas()]);
+    } else {
+      show(out.mensaje || 'No fue posible inscribir');
+    }
+  }catch(e){ show(e.message); }
+});
+
+// cambios de periodo recargan oferta
+periodoSel?.addEventListener('change', ()=>{ cargarOferta(); });
+
+(async function init(){
+  await cargarBasicos();
+  await cargarOferta();
+  await cargarInscritas();
+})();
+</script>
+</body></html>

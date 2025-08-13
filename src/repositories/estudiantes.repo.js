@@ -1,3 +1,4 @@
+// src/repositories/estudiantes.repo.js
 import { pool } from '../config/db.js';
 
 // ==============================
@@ -10,7 +11,7 @@ export const list = async () => {
            e.plan_id,
            CONCAT('Plan ', pe.id, ' - ', IFNULL(c.nombre,'')) AS plan_nombre
     FROM Estudiantes e
-    LEFT JOIN Usuario u        ON u.id = e.usuario_id
+    LEFT JOIN Usuario u         ON u.id = e.usuario_id
     LEFT JOIN Planes_Estudio pe ON pe.id = e.plan_id
     LEFT JOIN Carreras c        ON c.id = pe.carrera_id
     ORDER BY e.nombre, e.apellido
@@ -19,7 +20,7 @@ export const list = async () => {
 };
 
 // ==============================
-// CRUD estudiante (usando pool directo)
+// CRUD estudiante
 // ==============================
 export const create = async ({ nombre, apellido, carnet, correo, usuario_id, plan_id }) => {
   return (
@@ -74,10 +75,7 @@ export const optionsPlanes = async () => {
 export const existsCarnet = async (carnet, excludeId = null) => {
   let sql = `SELECT COUNT(*) AS c FROM Estudiantes WHERE carnet=?`;
   const params = [carnet];
-  if (excludeId) {
-    sql += ` AND id<>?`;
-    params.push(excludeId);
-  }
+  if (excludeId) { sql += ` AND id<>?`; params.push(excludeId); }
   const [rows] = await pool.query(sql, params);
   return rows[0].c > 0;
 };
@@ -86,10 +84,7 @@ export const existsUsuarioVinculado = async (usuario_id, excludeId = null) => {
   if (!usuario_id) return false;
   let sql = `SELECT COUNT(*) AS c FROM Estudiantes WHERE usuario_id=?`;
   const params = [usuario_id];
-  if (excludeId) {
-    sql += ` AND id<>?`;
-    params.push(excludeId);
-  }
+  if (excludeId) { sql += ` AND id<>?`; params.push(excludeId); }
   const [rows] = await pool.query(sql, params);
   return rows[0].c > 0;
 };
@@ -106,18 +101,26 @@ export const usuarioByCorreo = async (correo) => {
 
 /**
  * Crea un Usuario usando la conexión de una transacción abierta.
- * Debes pasar la conexión (conn) que obtuviste con pool.getConnection().
- * Retorna el insertId del nuevo usuario.
- *
- * Por defecto asigna rol_id = 3 (Estudiante). Ajusta si tu mapping es distinto.
+ * Por defecto rol_id = 3 (Estudiante). Ajusta si usas otro mapping.
  */
-export const createUsuario = async (
-  conn,
-  { nombre, apellido, correo, contrasena, rol_id = 3 }
-) => {
+export const createUsuario = async (conn, { nombre, apellido, correo, contrasena, rol_id = 3 }) => {
   const [r] = await conn.query(
     `INSERT INTO Usuario(nombre, apellido, correo, contrasena, rol_id) VALUES(?,?,?,?,?)`,
     [nombre || '', apellido || '', correo, contrasena, rol_id]
   );
   return r.insertId;
+};
+
+// ==============================
+// NUEVO: obtener estudiante por usuario_id (para matrícula)
+// ==============================
+export const getByUsuarioId = async (usuario_id) => {
+  const [rows] = await pool.query(`
+    SELECT e.*, pe.carrera_id
+    FROM Estudiantes e
+    JOIN Planes_Estudio pe ON pe.id = e.plan_id
+    WHERE e.usuario_id = ?
+    LIMIT 1
+  `, [usuario_id]);
+  return rows[0] || null;
 };
