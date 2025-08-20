@@ -6,8 +6,6 @@ const r = Router();
 r.post('/matricula/crear', ctl.crear);
 r.post('/matricula/agregar-detalle', ctl.agregar);
 r.get('/matricula/:matricula_id/detalle', ctl.detalle);
-
-// NUEVO: quitar materia
 r.delete('/matricula/detalle/:detalle_id', ctl.quitar);
 
 export default r;

@@ -16,7 +16,6 @@ export const detalle = async (req, res) => {
   catch(e){ res.status(500).json({ error: e.message }); }
 };
 
-// NUEVO: quitar detalle
 export const quitar = async (req, res) => {
   try {
     const r = await svc.quitar(Number(req.params.detalle_id));
