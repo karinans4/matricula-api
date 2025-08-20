@@ -61,6 +61,7 @@
   </div>
 
 <script>
+const API = location.origin; // ← FALTA!
 const u = JSON.parse(localStorage.getItem('usuario')||'null');
 const roles = u?.roles || [];
 const esAdmin = roles.includes(1);
