@@ -3,23 +3,31 @@
 <title>Admin – Profesores</title>
 <link rel="stylesheet" href="/styles.css">
 </head><body>
-  <div class="card" style="max-width:960px">
+  <div class="card" style="max-width:1100px">
     <div class="row">
       <h1>Profesores</h1>
       <a class="btn" style="width:auto" href="/dashboard.html">Volver</a>
     </div>
     <p class="sub">Registro y mantenimiento de profesores</p>
 
-    <form id="f" class="form" style="grid-template-columns:1fr 1fr 1.4fr auto;align-items:end">
+    <form id="f" class="form" style="grid-template-columns:repeat(6,1fr) auto;align-items:end">
       <div class="input"><label>Nombre</label><input id="nombre" required></div>
       <div class="input"><label>Apellido</label><input id="apellido"></div>
       <div class="input"><label>Correo</label><input id="correo" type="email" required></div>
+      <div class="input"><label>Dirección</label><input id="direccion"></div>
+      <div class="input"><label>Cédula</label><input id="cedula"></div>
+      <div class="input" style="align-self:center"></div>
       <button class="btn" type="submit">Guardar</button>
     </form>
 
     <div style="height:12px"></div>
     <table id="tbl" style="width:100%;border-collapse:collapse">
-      <thead><tr><th>ID</th><th>Nombre</th><th>Apellido</th><th>Correo</th><th>Acciones</th></tr></thead>
+      <thead>
+        <tr>
+          <th>ID</th><th>Nombre</th><th>Apellido</th><th>Correo</th>
+          <th>Dirección</th><th>Cédula</th><th>Acciones</th>
+        </tr>
+      </thead>
       <tbody></tbody>
     </table>
     <div id="msg" class="msg"></div>
@@ -36,30 +44,47 @@ const f = document.querySelector('#f');
 const nombre = document.querySelector('#nombre');
 const apellido = document.querySelector('#apellido');
 const correo = document.querySelector('#correo');
+const direccion = document.querySelector('#direccion');
+const cedula = document.querySelector('#cedula');
+
+function escapeHtml(s){ return (s ?? '').toString()
+  .replaceAll('&','&amp;').replaceAll('<','&lt;')
+  .replaceAll('>','&gt;').replaceAll('"','&quot;')
+  .replaceAll("'","&#039;"); }
 
 async function listar(){
   const r = await fetch(`${API}/api/profesores`);
+  if(!r.ok){ msg.textContent = 'Error al listar'; return; }
   const data = await r.json();
   tbl.innerHTML = data.map(x => `
     <tr>
       <td>${x.id}</td>
-      <td>${x.nombre}</td>
-      <td>${x.apellido || ''}</td>
-      <td>${x.correo}</td>
+      <td>${escapeHtml(x.nombre)}</td>
+      <td>${escapeHtml(x.apellido || '')}</td>
+      <td>${escapeHtml(x.correo || '')}</td>
+      <td>${escapeHtml(x.direccion || '')}</td>
+      <td>${escapeHtml(x.cedula || '')}</td>
       <td>
-        <button onclick="edit(${x.id},'${escapeHtml(x.nombre)}','${escapeHtml(x.apellido||'')}','${escapeHtml(x.correo)}')">Editar</button>
+        <button onclick="edit(${x.id},
+          '${escapeHtml(x.nombre)}',
+          '${escapeHtml(x.apellido||'')}',
+          '${escapeHtml(x.correo||'')}',
+          '${escapeHtml(x.direccion||'')}',
+          '${escapeHtml(x.cedula||'')}'
+        )">Editar</button>
         <button onclick="delP(${x.id})">Eliminar</button>
       </td>
     </tr>
   `).join('');
 }
-function escapeHtml(s){ return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;"); }
 
-window.edit = (id,n,a,c)=>{
+window.edit = (id,n,a,c,d,ce)=>{
   f.dataset.id = id;
   nombre.value = n;
   apellido.value = a;
   correo.value = c;
+  direccion.value = d;
+  cedula.value = ce;
   msg.textContent = `Editando ID ${id}`;
 };
 
@@ -73,17 +98,33 @@ window.delP = async (id)=>{
 
 f.addEventListener('submit', async e=>{
   e.preventDefault();
-  const body = JSON.stringify({ nombre: nombre.value.trim(), apellido: apellido.value.trim(), correo: correo.value.trim() });
+  const body = JSON.stringify({
+    nombre: nombre.value.trim(),
+    apellido: (apellido.value||'').trim(),
+    correo: (correo.value||'').trim(),
+    direccion: (direccion.value||'').trim(),
+    cedula: (cedula.value||'').trim()
+  });
 
-  if (f.dataset.id) {
-    const r = await fetch(`${API}/api/profesores/${f.dataset.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body });
-    msg.textContent = (await r.json()).updated ? 'Actualizado' : 'Sin cambios';
-    delete f.dataset.id;
-  } else {
-    const r = await fetch(`${API}/api/profesores`, { method:'POST', headers:{'Content-Type':'application/json'}, body });
-    msg.textContent = (await r.json()).id ? 'Creado' : 'Error al crear';
+  try{
+    if (f.dataset.id) {
+      const r = await fetch(`${API}/api/profesores/${f.dataset.id}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body
+      });
+      const j = await r.json();
+      msg.textContent = j.updated ? 'Actualizado' : (j.error || 'Sin cambios');
+      delete f.dataset.id;
+    } else {
+      const r = await fetch(`${API}/api/profesores`, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body
+      });
+      const j = await r.json();
+      msg.textContent = j.id ? 'Creado' : (j.error || 'Error al crear');
+    }
+    f.reset(); listar();
+  }catch(err){
+    msg.textContent = 'Error: ' + err.message;
   }
-  f.reset(); listar();
 });
 
 listar();
