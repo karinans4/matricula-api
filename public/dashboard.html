@@ -10,6 +10,7 @@
     .row{display:flex;gap:10px;justify-content:space-between;align-items:center}
     .card{max-width:920px}
     ul{margin:8px 0;padding-left:18px}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid rgba(0,0,0,.1);margin-left:6px;opacity:.8}
   </style>
 </head>
 <body>
@@ -45,9 +46,17 @@
       window.location.href = '/';
     }
 
-    // Bienvenida
-    document.querySelector('#bienvenida').textContent =
-      `Hola, ${usuario.nombre} (${usuario.correo})`;
+    // Roles múltiples: [1=Admin, 2=Profesor, 3=Estudiante]
+    const roles = Array.isArray(usuario.roles) ? usuario.roles : [];
+    const esAdmin = roles.includes(1);
+    const esProf  = roles.includes(2);
+    const esEstu  = roles.includes(3);
+
+    // Bienvenida + badges de roles (si roles_nombres viene del backend, lo usamos)
+    const nombres = usuario.roles_nombres || roles.map(r => r===1?'Admin':r===2?'Profesor':'Estudiante');
+    const badges = nombres.map(n => `<span class="badge">${n}</span>`).join('');
+    document.querySelector('#bienvenida').innerHTML =
+      `Hola, ${usuario.nombre} (${usuario.correo}) ${badges}`;
 
     // Cerrar sesión
     document.querySelector('#logout').onclick = () => {
@@ -55,32 +64,41 @@
       window.location.href = '/';
     };
 
+    // Construir menú según roles (puede tener varios)
     const links = [];
-    if (usuario.rol_id === 1) { // Admin
+
+    if (esAdmin) {
       links.push({ txt:'Administrar Profesores', href:'/admin-profesores.html' }); 
       links.push({ txt:'Administrar estudiantes', href:'/admin-estudiantes.html' });
       links.push({ txt:'Administrar Carreras', href:'/admin-carreras.html' });
       links.push({ txt:'Administrar Planes de estudio', href:'/admin-planes.html' });
       links.push({ txt:'Administrar Materias', href:'/admin-materias.html' });
       links.push({ txt:'Administrar Grupos', href:'/admin-grupos.html' });
-
-    }
-    if (usuario.rol_id === 3) { // Estudiante
-      links.push({ txt:'Matrícula de materias', href:'/estu-matricula.html' });
-      links.push({ txt:'Mis materias y notas', href:'/estu-notas.html' });
-      links.push({ txt:'Pago de matrícula', href:'/estu-pago.html' });
-    }
-    if (usuario.rol_id === 2) { // Profesor
-      links.push({ txt:'Subir notas', href:'/prof-notas.html' });
-    }
-
-    if (usuario.rol_id === 1) {
       links.push({ txt:'Config. Académica – Periodos', href:'/admin-periodos.html' });
       links.push({ txt:'Config. Académica – Tipos de matrícula', href:'/admin-tipos.html' });
     }
 
+    if (esEstu) {
+      links.push({ txt:'Matrícula de materias', href:'/estu-matricula.html' });
+      links.push({ txt:'Mis materias y notas', href:'/estu-notas.html' });
+      links.push({ txt:'Pago de matrícula', href:'/estu-pago.html' });
+    }
+
+    if (esProf) {
+      links.push({ txt:'Subir notas', href:'/prof-notas.html' });
+    }
+
+    // Evitar duplicados si tiene múltiples roles
+    const uniqByHref = (arr) => {
+      const seen = new Set();
+      return arr.filter(i => (seen.has(i.href) ? false : seen.add(i.href)));
+    };
+    const finalLinks = uniqByHref(links);
+
     const menu = document.querySelector('#menu');
-    menu.innerHTML = links.map(l => `<li><a class="link" href="${l.href}">${l.txt}</a></li>`).join('') || '<li>No hay opciones para tu rol aún.</li>';
+    menu.innerHTML = finalLinks.length
+      ? finalLinks.map(l => `<li><a class="link" href="${l.href}">${l.txt}</a></li>`).join('')
+      : '<li>No hay opciones para tu usuario aún.</li>';
 
     // Accesos rápidos de demo
     const result = document.querySelector('#result');

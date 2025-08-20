@@ -28,7 +28,9 @@
 <script>
 const API = location.origin;
 const u = JSON.parse(localStorage.getItem('usuario')||'null');
-if (!u || u.rol_id !== 1) location.href = '/'; // solo admin
+const roles = u?.roles || [];
+const esAdmin = roles.includes(1);
+if (!u || !esAdmin) location.href = '/';
 
 const tbl = document.querySelector('#tbl tbody');
 const msg = document.querySelector('#msg');

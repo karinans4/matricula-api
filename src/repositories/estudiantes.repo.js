@@ -1,6 +1,9 @@
 // src/repositories/estudiantes.repo.js
 import { pool } from '../config/db.js';
 
+// Helper para guardar NULL en vez de '' cuando el valor viene vacío
+const orNull = (v) => (v != null && String(v).trim() !== '' ? v : null);
+
 // ==============================
 // Listado con info de usuario y plan/carrera
 // ==============================
@@ -32,7 +35,7 @@ export const create = async ({
       INSERT INTO Estudiantes(nombre, apellido, carnet, correo, direccion, cedula, usuario_id, plan_id)
       VALUES(?,?,?,?,?,?,?,?)
     `,
-      [nombre, apellido || '', carnet, correo, direccion || '', cedula || '', usuario_id, plan_id]
+      [nombre, apellido || '', carnet, correo, orNull(direccion), orNull(cedula), usuario_id, plan_id]
     )
   )[0];
 };
@@ -44,10 +47,17 @@ export const update = async (id, {
     await pool.query(
       `
       UPDATE Estudiantes
-         SET nombre=?, apellido=?, carnet=?, correo=?, direccion=?, cedula=?, usuario_id=?, plan_id=?
+         SET nombre=?,
+             apellido=?,
+             carnet=?,
+             correo=?,
+             direccion=?,
+             cedula=?,
+             usuario_id=?,
+             plan_id=?
        WHERE id=?
     `,
-      [nombre, apellido || '', carnet, correo, direccion || '', cedula || '', usuario_id, plan_id, id]
+      [nombre, apellido || '', carnet, correo, orNull(direccion), orNull(cedula), usuario_id, plan_id, id]
     )
   )[0];
 };
@@ -86,6 +96,7 @@ export const existsCarnet = async (carnet, excludeId = null) => {
 };
 
 export const existsCedula = async (cedula, excludeId = null) => {
+  if (cedula == null || String(cedula).trim() === '') return false;
   let sql = `SELECT COUNT(*) AS c FROM Estudiantes WHERE cedula=?`;
   const params = [cedula];
   if (excludeId) { sql += ` AND id<>?`; params.push(excludeId); }
@@ -114,14 +125,35 @@ export const usuarioByCorreo = async (correo) => {
 
 /**
  * Crea un Usuario usando la conexión de una transacción abierta.
- * Por defecto rol_id = 3 (Estudiante). Ajusta si usas otro mapping.
+ * Modo roles múltiples: guarda Usuario con rol_id = NULL (legacy)
+ * y registra los roles en Usuarios_Roles (por defecto [3]=Estudiante).
+ *
+ * @param {object} conn  conexión (BEGIN ya iniciado)
+ * @param {object} data  { nombre, apellido, correo, contrasena, roles=[3] }
+ * @returns {number}     id del nuevo usuario
  */
-export const createUsuario = async (conn, { nombre, apellido, correo, contrasena, rol_id = 3 }) => {
+export const createUsuario = async (conn, {
+  nombre, apellido, correo, contrasena, roles = [3]
+}) => {
+  // 1) Crear Usuario (rol_id NULL por compatibilidad legacy)
   const [r] = await conn.query(
-    `INSERT INTO Usuario(nombre, apellido, correo, contrasena, rol_id) VALUES(?,?,?,?,?)`,
-    [nombre || '', apellido || '', correo, contrasena, rol_id]
+    `INSERT INTO Usuario(nombre, apellido, correo, contrasena, rol_id)
+     VALUES(?,?,?,?,NULL)`,
+    [nombre || '', apellido || '', correo, contrasena]
   );
-  return r.insertId;
+  const userId = r.insertId;
+
+  // 2) Registrar roles en pivote (INSERT IGNORE para idempotencia)
+  if (Array.isArray(roles) && roles.length > 0) {
+    const values = roles.map(() => '(?,?)').join(',');
+    const params = roles.flatMap(rolId => [userId, rolId]);
+    await conn.query(
+      `INSERT IGNORE INTO Usuarios_Roles(usuario_id, rol_id) VALUES ${values}`,
+      params
+    );
+  }
+
+  return userId;
 };
 
 // ==============================

@@ -1,14 +1,22 @@
-const API_BASE = location.origin; // mismo dominio del backend en Render
+// public/app.js
+// Usa el mismo dominio del backend (Render). Si se abre como file://, forzamos el host.
+const API_BASE = (location.origin && location.origin.startsWith('http'))
+  ? location.origin
+  : 'https://matricula-api-s1rg.onrender.com';
 
-const form = document.querySelector('#login-form');
+const form  = document.querySelector('#login-form');
 const email = document.querySelector('#correo');
 const pass  = document.querySelector('#contrasena');
 const msg   = document.querySelector('#msg');
 
+function showMsg(t, ok=false){
+  msg.textContent = t;
+  msg.className = 'msg ' + (ok ? 'ok' : 'error');
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  msg.textContent = 'Verificando...';
-  msg.className = 'msg';
+  showMsg('Verificando...', false);
 
   try {
     const res = await fetch(`${API_BASE}/api/login`, {
@@ -24,21 +32,31 @@ form.addEventListener('submit', async (e) => {
     const data = isJson ? await res.json() : null;
 
     if (!res.ok || !data || data.error) {
-      msg.textContent = data?.error || `Error ${res.status}: ${res.statusText}`;
-      msg.className = 'msg error';
-      return;
+      return showMsg(data?.error || `Error ${res.status}: ${res.statusText}`);
     }
 
-    // Guarda usuario en localStorage (demo simple)
+    // Aseguramos que 'roles' sea un array (el backend ya lo envía así)
+    if (!Array.isArray(data.roles)) data.roles = [];
+
+    // Guardar usuario completo en localStorage
     localStorage.setItem('usuario', JSON.stringify(data));
 
-    msg.textContent = `¡Bienvenido/a, ${data.nombre}! Redirigiendo...`;
-    msg.className = 'msg ok';
+    // Redirección según rol
+    const roles = data.roles;                 // [1,2,3]
+    const esAdmin = roles.includes(1);
+    const esProf  = roles.includes(2);
+    const esEstu  = roles.includes(3);
 
-    setTimeout(() => { window.location.href = '/dashboard.html'; }, 600);
+    // Política simple: Admin → dashboard; Prof (sin Admin) → vista profesor; Estu (solo) → matrícula
+    let dest = '/dashboard.html';
+    if (!esAdmin && esProf) dest = '/profesor.html';
+    if (!esAdmin && !esProf && esEstu) dest = '/estu-matricula.html';
+
+    showMsg(`¡Bienvenido/a, ${data.nombre}! Redirigiendo...`, true);
+    setTimeout(() => { window.location.href = dest; }, 500);
+
   } catch (err) {
     console.error(err);
-    msg.textContent = 'Error de red. Intenta de nuevo.';
-    msg.className = 'msg error';
+    showMsg('Error de red. Intenta de nuevo.');
   }
 });

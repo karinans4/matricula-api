@@ -62,7 +62,11 @@
 <script>
 const API = location.origin;
 const u = JSON.parse(localStorage.getItem('usuario')||'null');
-if (!u || u.rol_id !== 3) location.href='/'; // solo estudiante
+
+// ✅ Guard con roles múltiples (3 = Estudiante)
+const roles = (u?.roles || []);
+const esEstudiante = roles.includes(3);
+if (!u || !esEstudiante) location.href = '/';
 
 document.getElementById('bienvenida').textContent = `Hola, ${u.nombre} (${u.correo})`;
 
@@ -161,7 +165,6 @@ btnCrear.addEventListener('click', async ()=>{
       show(out.mensaje || 'Matrícula lista', true);
       await cargarInscritas();
     } else {
-      // algunos SP podrían devolver ok=0 pero con un matricula_id existente; intenta usarlo si viene
       if (out.matricula_id) {
         matricula_id = out.matricula_id;
         matInfo.textContent = `Matrícula #${matricula_id}`;
