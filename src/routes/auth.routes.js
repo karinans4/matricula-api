@@ -1,11 +1,8 @@
-// src/routes/auth.routes.js (ejemplo)
+// src/routes/auth.routes.js
 import { Router } from 'express';
-import { postLogin } from '../controllers/auth.controller.js';
+import { postLogin } from '../controllers/auth.controller.js'; // <- ¡relativo!
+
 const r = Router();
 r.post('/login', postLogin);
-export default r;
 
-// app.js
-import authRoutes from './src/routes/auth.routes.js';
-app.use(express.json());
-app.use('/api', authRoutes);
+export default r;
