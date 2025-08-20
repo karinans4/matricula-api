@@ -8,6 +8,7 @@
   table{width:100%;border-collapse:collapse}
   th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
   .pill{font-size:.8rem;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+  .right{ text-align:right }
 </style>
 </head><body>
   <div class="card" style="max-width:1200px">
@@ -41,7 +42,7 @@
       <table>
         <thead><tr>
           <th>Cod</th><th>Materia</th><th>Profesor</th>
-          <th>Horario</th><th>Cupo</th><th></th>
+          <th>Horario</th><th class="right">Cupo</th><th></th>
         </tr></thead>
         <tbody id="oferta"></tbody>
       </table>
@@ -52,18 +53,22 @@
       <h3>Mis materias en esta matrícula</h3>
       <table>
         <thead><tr>
-          <th>Cod</th><th>Materia</th><th>Profesor</th><th>Horario</th>
+          <th>Cod</th><th>Materia</th><th>Profesor</th><th>Horario</th><th></th>
         </tr></thead>
         <tbody id="inscritas"></tbody>
+        <tfoot>
+          <tr><td colspan="5" class="right"><strong>Total créditos: <span id="totCred">0</span></strong></td></tr>
+        </tfoot>
       </table>
     </div>
   </div>
 
 <script>
-const API = location.origin;
-const u = JSON.parse(localStorage.getItem('usuario')||'null');
+const API = (location.origin && location.origin.startsWith('http'))
+  ? location.origin
+  : 'https://matricula-api-s1rg.onrender.com';
 
-// ✅ Guard con roles múltiples (3 = Estudiante)
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
 const roles = (u?.roles || []);
 const esEstudiante = roles.includes(3);
 if (!u || !esEstudiante) location.href = '/';
@@ -72,12 +77,13 @@ document.getElementById('bienvenida').textContent = `Hola, ${u.nombre} (${u.corr
 
 const $=s=>document.querySelector(s);
 const periodoSel=$('#periodo'), tipoSel=$('#tipo'), ofertaT=$('#oferta'), inscritasT=$('#inscritas');
-const btnCrear=$('#btnCrear'), matInfo=$('#matInfo'), msg=$('#msg');
+const btnCrear=$('#btnCrear'), matInfo=$('#matInfo'), msg=$('#msg'), totCred=$('#totCred');
 
-let estudiante, plan_id=null, matricula_id=null;
+let estudiante, plan_id=null, matricula_id=null, detalleActual=[];
 
 function show(t, ok=false){ msg.textContent=t; msg.className='msg '+(ok?'ok':'error'); }
 function clearMsg(){ msg.textContent=''; msg.className='msg'; }
+const esc = s => (s ?? '').toString().replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 
 // warm-up al volver
 const volver = document.getElementById('volver');
@@ -95,6 +101,20 @@ async function fetchJSON(url, options){
   return data;
 }
 
+function savePrefs(){
+  localStorage.setItem('mat_pref', JSON.stringify({
+    periodo: periodoSel.value,
+    tipo: tipoSel.value
+  }));
+}
+function loadPrefs(){
+  try{
+    const v = JSON.parse(localStorage.getItem('mat_pref')||'null');
+    if (v?.periodo) periodoSel.value = String(v.periodo);
+    if (v?.tipo)    tipoSel.value    = String(v.tipo);
+  }catch{}
+}
+
 async function cargarBasicos(){
   // estudiante por usuario
   estudiante = await fetchJSON(`${API}/api/estudiantes/by-usuario/${u.id}`);
@@ -102,11 +122,13 @@ async function cargarBasicos(){
 
   // periodos activos
   const periodos = await fetchJSON(`${API}/api/periodos/activos`);
-  periodoSel.innerHTML = (periodos||[]).map(p=>`<option value="${p.id}">${p.nombre} (${p.anio||p.year||''})</option>`).join('');
+  periodoSel.innerHTML = (periodos||[]).map(p=>`<option value="${p.id}">${esc(p.nombre)} (${esc(p.anio||p.year||'')})</option>`).join('');
 
   // tipos matrícula
   const tipos = await fetchJSON(`${API}/api/tipos-matricula`);
-  tipoSel.innerHTML = (tipos||[]).map(t=>`<option value="${t.id}">${t.descripcion} – ₡${Number(t.costo).toFixed(2)}</option>`).join('');
+  tipoSel.innerHTML = (tipos||[]).map(t=>`<option value="${t.id}">${esc(t.descripcion)} – ₡${Number(t.costo||0).toFixed(2)}</option>`).join('');
+
+  loadPrefs();
 }
 
 async function cargarOferta(){
@@ -114,43 +136,60 @@ async function cargarOferta(){
   const pid = periodoSel.value;
   const data = await fetchJSON(`${API}/api/materias-impartidas?periodo_id=${pid}&plan_id=${plan_id}`);
 
+  const inscritosIds = new Set(detalleActual.map(x => x.grupo_id));
   ofertaT.innerHTML = (data || []).map(g => {
-    const gid = g.grupo_id ?? g.id; // tolerante si el backend aún no normalizó
+    const gid = g.grupo_id ?? g.id;
     const prof = (g.profesor ?? [g.profesor_nombre, g.profesor_apellido].filter(Boolean).join(' ').trim()) || '—';
     const cupoAct = Number(g.cupo_actual ?? 0);
     const cupoMax = Number(g.cupo_maximo ?? 0);
-    const disabled = (cupoAct >= cupoMax) ? 'disabled' : '';
+    const disabled = (cupoAct >= cupoMax || inscritosIds.has(gid)) ? 'disabled' : '';
+    const labelBtn = inscritosIds.has(gid) ? 'Ya inscrita' : 'Inscribir';
+
     return `
       <tr>
-        <td>${g.codigo ?? ''}</td>
-        <td>${g.materia ?? ''}</td>
-        <td>${prof}</td>
-        <td>${g.horario ?? ''}</td>
-        <td>${cupoAct}/${cupoMax}</td>
+        <td>${esc(g.codigo ?? '')}</td>
+        <td>${esc(g.materia ?? '')}</td>
+        <td>${esc(prof)}</td>
+        <td>${esc(g.horario ?? '')}</td>
+        <td class="right">${cupoAct}/${cupoMax}</td>
         <td>
-          <button class="btn insc" data-id="${gid ?? ''}" ${disabled}>Inscribir</button>
+          <button class="btn insc" data-id="${gid ?? ''}" ${disabled}>${labelBtn}</button>
         </td>
       </tr>
     `;
   }).join('') || `<tr><td colspan="6">No hay grupos para tu plan en este periodo.</td></tr>`;
 }
 
-async function cargarInscritas(){
-  if(!matricula_id) { inscritasT.innerHTML = '<tr><td colspan="4">Aún no has creado la matrícula.</td></tr>'; return; }
-  const det = await fetchJSON(`${API}/api/matricula/${matricula_id}/detalle`);
-  inscritasT.innerHTML = (det||[]).map(x=>`
+function renderInscritas(){
+  inscritasT.innerHTML = (detalleActual||[]).map(x=>`
     <tr>
-      <td>${x.codigo}</td>
-      <td>${x.nombre}</td>
-      <td>${x.profesor_nombre} ${x.profesor_apellido||''}</td>
-      <td>${x.horario||''}</td>
+      <td>${esc(x.codigo)}</td>
+      <td>${esc(x.nombre)}</td>
+      <td>${esc(`${x.profesor_nombre} ${x.profesor_apellido||''}`.trim())}</td>
+      <td>${esc(x.horario||'')}</td>
+      <td><button class="btn btn-quit" data-det="${x.detalle_id}">Quitar</button></td>
     </tr>
-  `).join('') || `<tr><td colspan="4">Sin materias aún.</td></tr>`;
+  `).join('') || `<tr><td colspan="5">Sin materias aún.</td></tr>`;
+
+  const total = (detalleActual||[]).reduce((acc, it)=> acc + Number(it.creditos||0), 0);
+  totCred.textContent = String(total);
+}
+
+async function cargarInscritas(){
+  if(!matricula_id) {
+    detalleActual = [];
+    renderInscritas();
+    return;
+  }
+  const det = await fetchJSON(`${API}/api/matricula/${matricula_id}/detalle`);
+  detalleActual = det || [];
+  renderInscritas();
 }
 
 btnCrear.addEventListener('click', async ()=>{
   clearMsg();
   try{
+    savePrefs();
     const body = {
       estudiante_id: estudiante.id,
       periodo_id: Number(periodoSel.value),
@@ -159,27 +198,38 @@ btnCrear.addEventListener('click', async ()=>{
     const out = await fetchJSON(`${API}/api/matricula/crear`, {
       method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
     });
-    if (out.ok==1 || out.ok===1) {
+    if (out.ok==1 || out.ok===1 || out.matricula_id) {
       matricula_id = out.matricula_id;
       matInfo.textContent = `Matrícula #${matricula_id} (Pendiente)`;
       show(out.mensaje || 'Matrícula lista', true);
-      await cargarInscritas();
+      await Promise.all([cargarInscritas(), cargarOferta()]);
     } else {
-      if (out.matricula_id) {
-        matricula_id = out.matricula_id;
-        matInfo.textContent = `Matrícula #${matricula_id}`;
-      }
       show(out.mensaje || 'No se pudo crear la matrícula');
     }
   } catch(e){ show(e.message); }
 });
 
+// Inscribir desde la oferta
 ofertaT.addEventListener('click', async (ev)=>{
   const t = ev.target;
   if (!t.classList.contains('insc')) return;
   if (!matricula_id) { show('Primero crea/usa la matrícula.', false); return; }
 
   const grupo_id = Number(t.dataset.id);
+
+  // duplicado
+  if (detalleActual.some(x => x.grupo_id === grupo_id)) {
+    show('Esa materia ya está inscrita.', false);
+    return;
+  }
+  // conflicto simple de horario por texto
+  const grupo = [...ofertaT.querySelectorAll('button.insc')].find(b => Number(b.dataset.id)===grupo_id)?.closest('tr');
+  const horarioNuevo = grupo ? grupo.children[3].textContent.trim() : '';
+  if (horarioNuevo && detalleActual.some(x => (x.horario||'').trim() === horarioNuevo)) {
+    show('Conflicto de horario con otra materia inscrita.', false);
+    return;
+  }
+
   try{
     const out = await fetchJSON(`${API}/api/matricula/agregar-detalle`, {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -187,15 +237,33 @@ ofertaT.addEventListener('click', async (ev)=>{
     });
     if (out.ok==1 || out.ok===1){
       show(out.mensaje || 'Materia agregada', true);
-      await Promise.all([cargarOferta(), cargarInscritas()]);
+      await Promise.all([cargarInscritas(), cargarOferta()]);
     } else {
       show(out.mensaje || 'No fue posible inscribir');
     }
   }catch(e){ show(e.message); }
 });
 
+// Quitar desde la lista
+inscritasT.addEventListener('click', async (ev)=>{
+  const t = ev.target;
+  if (!t.classList.contains('btn-quit')) return;
+  const detId = Number(t.dataset.det);
+  if (!detId) return;
+
+  try{
+    const out = await fetchJSON(`${API}/api/matricula/detalle/${detId}`, { method:'DELETE' });
+    if (out.deleted) {
+      show('Materia quitada', true);
+      await Promise.all([cargarInscritas(), cargarOferta()]);
+    } else {
+      show(out.error || 'No se pudo quitar la materia');
+    }
+  }catch(e){ show(e.message); }
+});
+
 // cambios de periodo recargan oferta
-periodoSel?.addEventListener('change', ()=>{ cargarOferta(); });
+periodoSel?.addEventListener('change', ()=>{ savePrefs(); cargarOferta(); });
 
 (async function init(){
   await cargarBasicos();

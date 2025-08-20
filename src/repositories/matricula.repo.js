@@ -1,11 +1,11 @@
+// src/repositories/matricula.repo.js
 import { pool } from '../config/db.js';
 
 /** Ejecuta múltiples sentencias y te da el último SELECT como objeto fila */
 const runMultiAndPickLastRow = async (sql, params = []) => {
   const [results] = await pool.query(sql, params);
-  // results es un array por cada statement; el ÚLTIMO es el SELECT final
+  // mysql2: results es un array por cada statement; el ÚLTIMO es el SELECT final
   const last = results[results.length - 1];
-  // last es un array de filas; toma la primera
   return (Array.isArray(last) && last[0]) ? last[0] : null;
 };
 
@@ -46,4 +46,10 @@ export const listarDetalle = async (matricula_id) => {
     ORDER BY m.codigo
   `, [matricula_id]);
   return rows;
+};
+
+// NUEVO: quitar una materia de la matrícula
+export const eliminarDetalle = async (detalle_id) => {
+  const [r] = await pool.query(`DELETE FROM Detalle_Matricula WHERE id=?`, [detalle_id]);
+  return r; // { affectedRows, ... }
 };
