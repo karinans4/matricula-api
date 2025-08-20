@@ -7,6 +7,7 @@ import { pool } from '../config/db.js';
 export const list = async () => {
   const [rows] = await pool.query(`
     SELECT e.id, e.nombre, e.apellido, e.carnet, e.correo,
+           e.direccion, e.cedula,
            e.usuario_id, u.correo AS usuario_correo,
            e.plan_id,
            CONCAT('Plan ', pe.id, ' - ', IFNULL(c.nombre,'')) AS plan_nombre
@@ -22,27 +23,31 @@ export const list = async () => {
 // ==============================
 // CRUD estudiante
 // ==============================
-export const create = async ({ nombre, apellido, carnet, correo, usuario_id, plan_id }) => {
+export const create = async ({
+  nombre, apellido, carnet, correo, direccion, cedula, usuario_id, plan_id
+}) => {
   return (
     await pool.query(
       `
-      INSERT INTO Estudiantes(nombre, apellido, carnet, correo, usuario_id, plan_id)
-      VALUES(?,?,?,?,?,?)
+      INSERT INTO Estudiantes(nombre, apellido, carnet, correo, direccion, cedula, usuario_id, plan_id)
+      VALUES(?,?,?,?,?,?,?,?)
     `,
-      [nombre, apellido || '', carnet, correo, usuario_id, plan_id]
+      [nombre, apellido || '', carnet, correo, direccion || '', cedula || '', usuario_id, plan_id]
     )
   )[0];
 };
 
-export const update = async (id, { nombre, apellido, carnet, correo, usuario_id, plan_id }) => {
+export const update = async (id, {
+  nombre, apellido, carnet, correo, direccion, cedula, usuario_id, plan_id
+}) => {
   return (
     await pool.query(
       `
       UPDATE Estudiantes
-         SET nombre=?, apellido=?, carnet=?, correo=?, usuario_id=?, plan_id=?
+         SET nombre=?, apellido=?, carnet=?, correo=?, direccion=?, cedula=?, usuario_id=?, plan_id=?
        WHERE id=?
     `,
-      [nombre, apellido || '', carnet, correo, usuario_id, plan_id, id]
+      [nombre, apellido || '', carnet, correo, direccion || '', cedula || '', usuario_id, plan_id, id]
     )
   )[0];
 };
@@ -75,6 +80,14 @@ export const optionsPlanes = async () => {
 export const existsCarnet = async (carnet, excludeId = null) => {
   let sql = `SELECT COUNT(*) AS c FROM Estudiantes WHERE carnet=?`;
   const params = [carnet];
+  if (excludeId) { sql += ` AND id<>?`; params.push(excludeId); }
+  const [rows] = await pool.query(sql, params);
+  return rows[0].c > 0;
+};
+
+export const existsCedula = async (cedula, excludeId = null) => {
+  let sql = `SELECT COUNT(*) AS c FROM Estudiantes WHERE cedula=?`;
+  const params = [cedula];
   if (excludeId) { sql += ` AND id<>?`; params.push(excludeId); }
   const [rows] = await pool.query(sql, params);
   return rows[0].c > 0;

@@ -1,20 +1,34 @@
+// src/services/estudiantes.service.js
 import { pool } from '../config/db.js';
 import * as repo from '../repositories/estudiantes.repo.js';
-export const byUsuario = (usuario_id) => repo.getByUsuarioId(usuario_id);
 
+export const byUsuario = (usuario_id) => repo.getByUsuarioId(usuario_id);
 
 export const listar = () => repo.list();
 
 export const crear = async (d) => {
+  // Requeridos mínimos
   const req = ['nombre','carnet','correo','plan_id'];
   for (const k of req) if (d[k] == null || d[k] === '') throw new Error(`Campo obligatorio: ${k}`);
 
-  // Validar carnet único
+  // Carnet único
   if (await repo.existsCarnet(d.carnet)) throw new Error('El carnet ya existe');
+
+  // Cédula única (si viene)
+  if (d.cedula && (await repo.existsCedula(d.cedula))) {
+    throw new Error('La cédula ya existe');
+  }
+
+  // Si no se crea usuario, debe venir usuario_id (la columna es NOT NULL)
+  if (!d.crear_usuario && !d.usuario_id) {
+    throw new Error('Debe seleccionar un usuario existente o marcar "crear usuario"');
+  }
 
   // Si viene usuario existente, validar que no esté vinculado a otro estudiante
   if (!d.crear_usuario && d.usuario_id) {
-    if (await repo.existsUsuarioVinculado(d.usuario_id)) throw new Error('Ese usuario ya está vinculado a un estudiante');
+    if (await repo.existsUsuarioVinculado(d.usuario_id)) {
+      throw new Error('Ese usuario ya está vinculado a un estudiante');
+    }
   }
 
   const conn = await pool.getConnection();
@@ -36,16 +50,25 @@ export const crear = async (d) => {
         nombre: d.nombre,
         apellido: d.apellido || '',
         correo: d.usuario_correo,
-        contrasena: d.usuario_contrasena, // (simple, sin hash, según tu alcance)
+        contrasena: d.usuario_contrasena, // (sin hash, según alcance actual)
         rol_id: 3
       });
     }
 
-    // crear estudiante
+    // crear estudiante (incluye direccion y cedula)
     const [r] = await conn.query(`
-      INSERT INTO Estudiantes(nombre, apellido, carnet, correo, usuario_id, plan_id)
-      VALUES(?,?,?,?,?,?)
-    `, [d.nombre, d.apellido || '', d.carnet, d.correo, usuarioId, d.plan_id]);
+      INSERT INTO Estudiantes(nombre, apellido, carnet, correo, direccion, cedula, usuario_id, plan_id)
+      VALUES(?,?,?,?,?,?,?,?)
+    `, [
+      d.nombre,
+      d.apellido || '',
+      d.carnet,
+      d.correo,
+      d.direccion || '',
+      d.cedula || '',
+      usuarioId,
+      d.plan_id
+    ]);
 
     await conn.commit();
     return { insertId: r.insertId };
@@ -61,8 +84,19 @@ export const actualizar = async (id, d) => {
   const req = ['nombre','carnet','correo','usuario_id','plan_id'];
   for (const k of req) if (d[k] == null || d[k] === '') throw new Error(`Campo obligatorio: ${k}`);
 
-  if (await repo.existsCarnet(d.carnet, id)) throw new Error('El carnet ya existe');
-  if (await repo.existsUsuarioVinculado(d.usuario_id, id)) throw new Error('Ese usuario ya está vinculado a un estudiante');
+  if (await repo.existsCarnet(d.carnet, id)) {
+    throw new Error('El carnet ya existe');
+  }
+
+  // Cédula única (si viene)
+  if (d.cedula && (await repo.existsCedula(d.cedula, id))) {
+    throw new Error('La cédula ya existe');
+  }
+
+  // Usuario vinculado único
+  if (await repo.existsUsuarioVinculado(d.usuario_id, id)) {
+    throw new Error('Ese usuario ya está vinculado a un estudiante');
+  }
 
   return repo.update(id, d);
 };

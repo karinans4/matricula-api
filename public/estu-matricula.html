@@ -109,16 +109,26 @@ async function cargarOferta(){
   if(!plan_id) return;
   const pid = periodoSel.value;
   const data = await fetchJSON(`${API}/api/materias-impartidas?periodo_id=${pid}&plan_id=${plan_id}`);
-  ofertaT.innerHTML = (data||[]).map(g=>`
-    <tr>
-      <td>${g.codigo}</td>
-      <td>${g.materia}</td>
-      <td>${g.profesor}</td>
-      <td>${g.horario||''}</td>
-      <td>${g.cupo_actual}/${g.cupo_maximo}</td>
-      <td><button class="btn insc" data-id="${g.grupo_id}" ${g.cupo_actual>=g.cupo_maximo?'disabled':''}>Inscribir</button></td>
-    </tr>
-  `).join('') || `<tr><td colspan="6">No hay grupos para tu plan en este periodo.</td></tr>`;
+
+  ofertaT.innerHTML = (data || []).map(g => {
+    const gid = g.grupo_id ?? g.id; // tolerante si el backend aún no normalizó
+    const prof = (g.profesor ?? [g.profesor_nombre, g.profesor_apellido].filter(Boolean).join(' ').trim()) || '—';
+    const cupoAct = Number(g.cupo_actual ?? 0);
+    const cupoMax = Number(g.cupo_maximo ?? 0);
+    const disabled = (cupoAct >= cupoMax) ? 'disabled' : '';
+    return `
+      <tr>
+        <td>${g.codigo ?? ''}</td>
+        <td>${g.materia ?? ''}</td>
+        <td>${prof}</td>
+        <td>${g.horario ?? ''}</td>
+        <td>${cupoAct}/${cupoMax}</td>
+        <td>
+          <button class="btn insc" data-id="${gid ?? ''}" ${disabled}>Inscribir</button>
+        </td>
+      </tr>
+    `;
+  }).join('') || `<tr><td colspan="6">No hay grupos para tu plan en este periodo.</td></tr>`;
 }
 
 async function cargarInscritas(){

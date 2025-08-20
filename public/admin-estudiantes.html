@@ -11,11 +11,13 @@
     <p class="sub">Registro y mantenimiento de estudiantes</p>
 
     <!-- FORM: crear/editar estudiante -->
-    <form id="f" class="form" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr auto;align-items:end">
+    <form id="f" class="form" style="grid-template-columns:repeat(8,1fr) auto;align-items:end">
       <div class="input"><label>Nombre</label><input id="nombre" required></div>
       <div class="input"><label>Apellido</label><input id="apellido"></div>
       <div class="input"><label>Carnet</label><input id="carnet" required></div>
       <div class="input"><label>Correo (estudiante)</label><input id="correo" type="email" required></div>
+      <div class="input"><label>Dirección</label><input id="direccion"></div>
+      <div class="input"><label>Cédula</label><input id="cedula"></div>
 
       <!-- Selector de usuario existente -->
       <div class="input" id="wrapUsuarioSel">
@@ -51,6 +53,7 @@
     <table id="tbl" style="width:100%;border-collapse:collapse">
       <thead><tr>
         <th>ID</th><th>Nombre</th><th>Apellido</th><th>Carnet</th><th>Correo</th>
+        <th>Dirección</th><th>Cédula</th>
         <th>Usuario</th><th>Plan</th><th>Acciones</th>
       </tr></thead>
       <tbody></tbody>
@@ -71,6 +74,8 @@ const nombre = $('#nombre');
 const apellido = $('#apellido');
 const carnet = $('#carnet');
 const correo = $('#correo');
+const direccion = $('#direccion');
+const cedula = $('#cedula');
 const usuarioSel = $('#usuario');
 const crearUsuarioChk = $('#crearUsuario');
 const usuarioCorreo = $('#usuarioCorreo');
@@ -115,6 +120,8 @@ async function listar(){
         <td>${esc(x.apellido)}</td>
         <td>${esc(x.carnet)}</td>
         <td>${esc(x.correo)}</td>
+        <td>${esc(x.direccion||'')}</td>
+        <td>${esc(x.cedula||'')}</td>
         <td>${esc(x.usuario_correo || ('#'+x.usuario_id))}</td>
         <td>${esc(x.plan_nombre || ('Plan '+x.plan_id))}</td>
         <td>
@@ -124,6 +131,8 @@ async function listar(){
             data-apellido="${esc(x.apellido||'')}"
             data-carnet="${esc(x.carnet)}"
             data-correo="${esc(x.correo)}"
+            data-direccion="${esc(x.direccion||'')}"
+            data-cedula="${esc(x.cedula||'')}"
             data-usuario="${x.usuario_id}"
             data-plan="${x.plan_id}"
             style="width:auto;padding:6px 10px">Editar</button>
@@ -140,10 +149,12 @@ tblBody.addEventListener('click', async (ev)=>{
   if (t.classList.contains('btn-edit')) {
     clearMsg();
     f.dataset.id = t.dataset.id;
-    nombre.value   = t.dataset.nombre;
-    apellido.value = t.dataset.apellido;
-    carnet.value   = t.dataset.carnet;
-    correo.value   = t.dataset.correo;
+    nombre.value     = t.dataset.nombre;
+    apellido.value   = t.dataset.apellido;
+    carnet.value     = t.dataset.carnet;
+    correo.value     = t.dataset.correo;
+    direccion.value  = t.dataset.direccion || '';
+    cedula.value     = t.dataset.cedula || '';
     usuarioSel.value = String(t.dataset.usuario);
     planSel.value    = String(t.dataset.plan);
     crearUsuarioChk.checked = false;
@@ -170,6 +181,8 @@ f.addEventListener('submit', async (e)=>{
     apellido: apellido.value.trim(),
     carnet: carnet.value.trim(),
     correo: correo.value.trim(),
+    direccion: direccion.value.trim(),
+    cedula: cedula.value.trim(),
     plan_id: Number(planSel.value)
   };
 
