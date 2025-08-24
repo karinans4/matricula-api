@@ -1,7 +1,13 @@
+// src/routes/materias.routes.js
 import { Router } from 'express';
 import * as ctl from '../controllers/materias.controller.js';
+import { materiasImpartidas } from '../controllers/basicos.controller.js';
 
 const r = Router();
+
+// Oferta para matrícula (plan + período) que consume el frontend:
+// GET /api/materias-impartidas?periodo_id=#&plan_id=#
+r.get('/materias-impartidas', materiasImpartidas);
 
 // CRUD
 r.get('/materias', ctl.getAll);

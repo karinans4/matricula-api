@@ -12,11 +12,15 @@ import materiasRoutes from './routes/materias.routes.js';
 import gruposRoutes from './routes/grupos.routes.js';
 import matriculaRoutes from './routes/matricula.routes.js';
 import ofertaRoutes from './routes/oferta.routes.js';
+import basicosRoutes from './src/routes/basicos.routes.js';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
-
 const app = express();
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 app.use(cors());
 app.use(express.json());
 
@@ -36,7 +40,7 @@ app.use('/api', materiasRoutes);
 app.use('/api', gruposRoutes);
 app.use('/api', matriculaRoutes);
 app.use('/api', ofertaRoutes);
-
+app.use('/api', basicosRoutes);
 
 export default app;
 

@@ -186,28 +186,42 @@ async function cargarInscritas(){
   renderInscritas();
 }
 
+/* ===== AJUSTE: validación y mensaje de éxito consistente ===== */
 btnCrear.addEventListener('click', async ()=>{
   clearMsg();
   try{
+    // Requerido: período y tipo seleccionados
+    if (!estudiante?.id || !periodoSel.value || !tipoSel.value) {
+      show('Seleccioná período y tipo de matrícula.');
+      return;
+    }
+
     savePrefs();
     const body = {
       estudiante_id: estudiante.id,
       periodo_id: Number(periodoSel.value),
+      // Tu backend lo requiere: dejar esta línea
       tipo_matricula_id: Number(tipoSel.value)
     };
+
     const out = await fetchJSON(`${API}/api/matricula/crear`, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
     });
-    if (out.ok==1 || out.ok===1 || out.matricula_id) {
+
+    // Proceder solo si viene el ID (evita mensajes ambiguos)
+    if (out?.matricula_id) {
       matricula_id = out.matricula_id;
       matInfo.textContent = `Matrícula #${matricula_id} (Pendiente)`;
-      show(out.mensaje || 'Matrícula lista', true);
+      show('Matrícula lista', true); // forzamos mensaje claro de éxito
       await Promise.all([cargarInscritas(), cargarOferta()]);
     } else {
-      show(out.mensaje || 'No se pudo crear la matrícula');
+      show(out?.mensaje || 'No se pudo crear la matrícula');
     }
   } catch(e){ show(e.message); }
 });
+/* ===== fin ajuste ===== */
 
 // Inscribir desde la oferta
 ofertaT.addEventListener('click', async (ev)=>{
