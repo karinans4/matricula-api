@@ -1,0 +1,199 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Estudiante – Pago de matrícula</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .grid{display:grid;gap:14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .right{text-align:right}
+  .pill{font-size:.8rem;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+  .mono{font-variant-numeric: tabular-nums;}
+</style>
+</head><body>
+  <div class="card" style="max-width:1000px">
+    <div class="row" style="justify-content:space-between">
+      <h1>Pago de matrícula</h1>
+      <a class="btn" id="volver" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub" id="bienvenida"></p>
+
+    <!-- Selección de matrícula -->
+    <div class="card" style="background:transparent">
+      <h3>Seleccionar matrícula</h3>
+      <div class="row">
+        <div class="input">
+          <label>Matrícula ID</label>
+          <input id="matId" type="number" placeholder="Ej: 7" min="1" style="width:200px">
+        </div>
+        <button class="btn" id="btnCargar">Cargar cotización</button>
+        <span id="matInfo" class="pill"></span>
+      </div>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <!-- Resumen de cobro -->
+    <div class="card" style="background:transparent">
+      <h3>Resumen</h3>
+      <table>
+        <tbody id="resumen">
+          <tr><td>Costo de matrícula</td><td class="right mono" id="costoMat">—</td></tr>
+          <tr><td>Créditos inscritos</td><td class="right mono"><span id="cred">0</span></td></tr>
+          <tr><td>Precio por crédito</td><td class="right mono" id="precioCred">—</td></tr>
+          <tr><td>Subtotal créditos</td><td class="right mono" id="subCred">—</td></tr>
+          <tr><td><strong>Total a pagar</strong></td><td class="right mono"><strong id="total">—</strong></td></tr>
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="btnGenerar" disabled>Generar/actualizar pago</button>
+        <span id="pagoInfo" class="pill"></span>
+        <button class="btn" id="btnConfirmar" style="display:none">Simular confirmar pago</button>
+      </div>
+    </div>
+
+    <!-- Historial del estudiante -->
+    <div class="card" style="background:transparent">
+      <h3>Mis pagos</h3>
+      <table>
+        <thead><tr>
+          <th>#</th><th>Matrícula</th><th>Fecha</th><th>Estado</th><th class="right">Monto</th>
+        </tr></thead>
+        <tbody id="hist"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+const API = (location.origin && location.origin.startsWith('http'))
+  ? location.origin
+  : 'https://matricula-api-s1rg.onrender.com';
+
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+const roles = (u?.roles || []);
+const esEstudiante = roles.includes(3);
+if (!u || !esEstudiante) location.href = '/';
+
+document.getElementById('bienvenida').textContent = `Hola, ${u.nombre} (${u.correo})`;
+
+const $=s=>document.querySelector(s);
+const matIdInp = $('#matId'), btnCargar = $('#btnCargar'), matInfo = $('#matInfo');
+const msg = $('#msg'), pagoInfo = $('#pagoInfo'), btnGenerar = $('#btnGenerar'), btnConfirmar = $('#btnConfirmar');
+const costoMat = $('#costoMat'), cred = $('#cred'), precioCred = $('#precioCred'), subCred = $('#subCred'), total = $('#total');
+const histT = $('#hist');
+
+// warm-up al volver (como en tus otras páginas)
+const volver = document.getElementById('volver');
+volver.addEventListener('click', async (e)=>{
+  e.preventDefault();
+  for(let i=0;i<3;i++){ try{ const r=await fetch('/health',{cache:'no-store'}); if(r.ok) break; }catch{} await new Promise(r=>setTimeout(r,1200)); }
+  location.href = volver.getAttribute('href');
+});
+
+function show(t, ok=false){ msg.textContent=t||''; msg.className='msg '+(ok?'ok':'error'); }
+function clearMsg(){ show(''); }
+const fmtCRC = (n)=> new Intl.NumberFormat('es-CR',{style:'currency',currency:'CRC',maximumFractionDigits:2}).format(Number(n||0));
+
+let estudiante = null;
+let matricula_id = null;
+let cot = null; // cotización actual
+let pagoActual = null;
+
+async function fetchJSON(url, options){
+  const r = await fetch(url, options);
+  const ct = r.headers.get('content-type')||'';
+  const data = ct.includes('application/json') ? await r.json() : null;
+  if(!r.ok) throw new Error(data?.error || data?.mensaje || `HTTP ${r.status}`);
+  return data;
+}
+
+async function cargarEstudiante(){
+  estudiante = await fetchJSON(`${API}/api/estudiantes/by-usuario/${u.id}`);
+}
+
+function renderCotizacion(c){
+  costoMat.textContent = fmtCRC(c.costo_matricula);
+  cred.textContent = String(c.total_creditos||0);
+  precioCred.textContent = fmtCRC(c.precio_credito||0);
+  subCred.textContent = fmtCRC(c.subtotal_creditos||0);
+  total.textContent = fmtCRC(c.monto_total||0);
+}
+
+async function cargarHistorial(){
+  if(!estudiante?.id) return;
+  const rows = await fetchJSON(`${API}/api/pagos/estudiante/${estudiante.id}`);
+  histT.innerHTML = (rows||[]).map(p=>`
+    <tr>
+      <td>${p.id}</td>
+      <td>${p.matricula_id}</td>
+      <td>${new Date(p.fecha).toLocaleString()}</td>
+      <td>${p.estado}</td>
+      <td class="right mono">${fmtCRC(p.monto_total)}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="5">Sin pagos aún.</td></tr>`;
+}
+
+async function cargarCotizacion(){
+  clearMsg(); pagoInfo.textContent=''; btnConfirmar.style.display='none';
+  const id = Number(matIdInp.value);
+  if(!id){ show('Ingresá un ID de matrícula válido.'); return; }
+  const c = await fetchJSON(`${API}/api/pagos/cotizacion/${id}`);
+  cot = c; matricula_id = c.matricula_id;
+  localStorage.setItem('matricula_id', String(matricula_id));
+  matInfo.textContent = `Matrícula #${matricula_id}`;
+  renderCotizacion(c);
+  btnGenerar.disabled = false;
+
+  // si ya hay un pago, muéstralo
+  const p = await fetchJSON(`${API}/api/pagos/matricula/${matricula_id}`);
+  pagoActual = p;
+  if (p?.id){
+    pagoInfo.textContent = `Pago #${p.id} – ${p.estado}`;
+    if (p.estado === 'Pendiente') btnConfirmar.style.display='inline-block';
+  }
+}
+
+btnCargar.addEventListener('click', async ()=>{
+  try{ await cargarCotizacion(); await cargarHistorial(); show('', true); }
+  catch(e){ show(e.message||String(e)); }
+});
+
+btnGenerar.addEventListener('click', async ()=>{
+  try{
+    if(!matricula_id) { show('Cargá una cotización primero.'); return; }
+    const out = await fetchJSON(`${API}/api/pagos`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ matricula_id })
+    });
+    pagoActual = out;
+    pagoInfo.textContent = `Pago #${out.pago_id} – ${out.estado} – Total ${fmtCRC(out.monto_total)}`;
+    btnConfirmar.style.display = (out.estado==='Pendiente') ? 'inline-block' : 'none';
+    show('Pago generado/actualizado', true);
+    await cargarHistorial();
+  }catch(e){ show(e.message||String(e)); }
+});
+
+btnConfirmar.addEventListener('click', async ()=>{
+  try{
+    if(!pagoActual?.pago_id){ show('Generá el pago primero.'); return; }
+    const out = await fetchJSON(`${API}/api/pagos/${pagoActual.pago_id}/confirmar`, { method:'POST' });
+    pagoInfo.textContent = `Pago #${pagoActual.pago_id} – Pagado`;
+    btnConfirmar.style.display='none';
+    show(out.mensaje || 'Pago confirmado', true);
+    await cargarHistorial();
+  }catch(e){ show(e.message||String(e)); }
+});
+
+// Init: leer matrícula por querystring o localStorage
+(async function init(){
+  try{
+    await cargarEstudiante();
+    const q = new URLSearchParams(location.search);
+    const mid = Number(q.get('matricula_id')) || Number(localStorage.getItem('matricula_id')) || 0;
+    if(mid){ matIdInp.value = String(mid); await cargarCotizacion(); }
+    await cargarHistorial();
+  }catch(e){ show(e.message||String(e)); }
+})();
+</script>
+</body></html>

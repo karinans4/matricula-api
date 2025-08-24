@@ -1,7 +1,9 @@
+// app.js (en la raíz del proyecto)
 import express from 'express';
 import cors from 'cors';
+
 import authRoutes from './routes/auth.routes.js';
-import periodosRoutes from './routes/periodos.routes.js'; 
+import periodosRoutes from './routes/periodos.routes.js';
 import catalogosRoutes from './routes/catalogos.routes.js';
 import tiposRoutes from './routes/tipos.routes.js';
 import profesoresRoutes from './routes/profesores.routes.js';
@@ -17,20 +19,27 @@ import pagosRoutes from './routes/pagos.routes.js';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
+
 const app = express();
 
+// ESM: obtener __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
+// Middlewares
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(cors());
-app.use(express.json());
+// Servir archivos estáticos desde /public (mismo nivel que app.js)
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(express.static('public'));
+// Healthcheck
+app.get('/health', (_req, res) => res.send('OK'));
 
-app.get('/health', (req, res) => res.send('OK'));
-
+// API
 app.use('/api', authRoutes);
-app.use('/api', periodosRoutes); 
+app.use('/api', periodosRoutes);
 app.use('/api', catalogosRoutes);
 app.use('/api', tiposRoutes);
 app.use('/api', profesoresRoutes);
@@ -45,5 +54,3 @@ app.use('/api', basicosRoutes);
 app.use('/api', pagosRoutes);
 
 export default app;
-
-
