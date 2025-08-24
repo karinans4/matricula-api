@@ -1,4 +1,3 @@
-// app.js (en la raíz del proyecto)
 import express from 'express';
 import cors from 'cors';
 
@@ -22,7 +21,7 @@ import { fileURLToPath } from 'url';
 
 const app = express();
 
-// ESM: obtener __dirname
+// __dirname en ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
@@ -31,13 +30,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Servir archivos estáticos desde /public (mismo nivel que app.js)
+// Archivos estáticos desde /public (en el mismo nivel que app.js)
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Healthcheck
 app.get('/health', (_req, res) => res.send('OK'));
 
-// API
+// Rutas API
 app.use('/api', authRoutes);
 app.use('/api', periodosRoutes);
 app.use('/api', catalogosRoutes);
@@ -52,5 +51,7 @@ app.use('/api', matriculaRoutes);
 app.use('/api', ofertaRoutes);
 app.use('/api', basicosRoutes);
 app.use('/api', pagosRoutes);
+
+app.use('/api/*', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 export default app;
