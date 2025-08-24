@@ -45,11 +45,11 @@ export const crearMatricula = async (payload = {}) => {
 
   // Crear o reutilizar matrícula (LAST_INSERT_ID trick)
   const sql = `
-    INSERT INTO Matricula(estudiante_id, periodo_id, tipo_matricula_id)
-    VALUES(?,?,?)
+    INSERT INTO Matricula (estudiante_id, periodo_id, tipo_matricula_id)
+    VALUES (?,?,?) AS new
     ON DUPLICATE KEY UPDATE
       id = LAST_INSERT_ID(id),
-      tipo_matricula_id = VALUES(tipo_matricula_id)
+      tipo_matricula_id = new.tipo_matricula_id;
   `;
   const [r] = await pool.query(sql, [estudiante_id, periodo_id, tipo_matricula_id]);
   const matricula_id = r.insertId;

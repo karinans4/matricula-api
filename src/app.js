@@ -13,6 +13,7 @@ import gruposRoutes from './routes/grupos.routes.js';
 import matriculaRoutes from './routes/matricula.routes.js';
 import ofertaRoutes from './routes/oferta.routes.js';
 import basicosRoutes from './routes/basicos.routes.js';
+import pagosRoutes from './routes/pagos.routes.js';
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -41,6 +42,7 @@ app.use('/api', gruposRoutes);
 app.use('/api', matriculaRoutes);
 app.use('/api', ofertaRoutes);
 app.use('/api', basicosRoutes);
+app.use('/api', pagosRoutes);
 
 export default app;
 
