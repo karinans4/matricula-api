@@ -33,6 +33,8 @@ app.use(express.urlencoded({ extended: true }));
 // Archivos estáticos desde /public (en el mismo nivel que app.js)
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/', (_req, res) => res.redirect('/dashboard.html'));
+
 // Healthcheck
 app.get('/health', (_req, res) => res.send('OK'));
 
