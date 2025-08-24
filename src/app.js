@@ -1,5 +1,9 @@
+// app.js
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/auth.routes.js';
 import periodosRoutes from './routes/periodos.routes.js';
@@ -16,9 +20,6 @@ import ofertaRoutes from './routes/oferta.routes.js';
 import basicosRoutes from './routes/basicos.routes.js';
 import pagosRoutes from './routes/pagos.routes.js';
 
-import path from 'path';
-import { fileURLToPath } from 'url';
-
 const app = express();
 
 // __dirname en ESM
@@ -30,9 +31,13 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Archivos estáticos desde /public (en el mismo nivel que app.js)
-app.use(express.static(path.join(__dirname, 'public')));
+// Servir estáticos: intenta ./public (misma carpeta) y, si no existe, ../public (raíz del repo)
+const publicHere = path.join(__dirname, 'public');
+const publicUp   = path.join(__dirname, '../public');
+const staticDir  = fs.existsSync(publicHere) ? publicHere : publicUp;
+app.use(express.static(staticDir));
 
+// Redirigir la raíz al dashboard (ajusta si quieres otra página)
 app.get('/', (_req, res) => res.redirect('/dashboard.html'));
 
 // Healthcheck
@@ -54,6 +59,7 @@ app.use('/api', ofertaRoutes);
 app.use('/api', basicosRoutes);
 app.use('/api', pagosRoutes);
 
+// 404 API
 app.use('/api/*', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 export default app;
