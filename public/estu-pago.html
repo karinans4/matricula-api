@@ -12,7 +12,8 @@
   .pill{font-size:.8rem;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
   .mono{font-variant-numeric: tabular-nums;}
   .label{font-size:.9rem;opacity:.9;margin-bottom:4px}
-  .field{padding:10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:transparent}
+  .field{padding:10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:transparent;width:100%}
+  .two{display:grid;grid-template-columns:1fr 200px;gap:14px}
 </style>
 </head><body>
   <div class="card" style="max-width:1000px">
@@ -50,20 +51,18 @@
       </table>
     </div>
 
-    <!-- Paso 3: datos de tarjeta (Stripe Elements) -->
-    <div class="card" style="background:transparent">
+    <!-- Paso 3A: datos de tarjeta (Stripe Elements) -->
+    <div class="card" style="background:transparent" id="card-section" hidden>
       <h3>Datos de la tarjeta</h3>
       <div class="grid">
         <div>
           <label class="label">Nombre en la tarjeta</label>
-          <input id="cardholder" class="field" placeholder="Como aparece en la tarjeta" style="width:100%" autocomplete="cc-name">
+          <input id="cardholder" class="field" placeholder="Como aparece en la tarjeta" autocomplete="cc-name">
         </div>
-
         <div>
           <label class="label">Número de tarjeta</label>
           <div id="card-number" class="field" aria-label="Número de tarjeta"></div>
         </div>
-
         <div class="row" style="gap:14px">
           <div style="flex:1">
             <label class="label">Vencimiento</label>
@@ -74,14 +73,40 @@
             <div id="card-cvc" class="field" aria-label="Código de seguridad"></div>
           </div>
         </div>
-
-        <div class="row" style="margin-top:8px">
-          <button class="btn" id="btnPagar" disabled>Pagar ahora</button>
-          <span id="pagoInfo" class="pill"></span>
-        </div>
-        <div id="payMsg" class="msg"></div>
       </div>
     </div>
+
+    <!-- Paso 3B: datos de tarjeta (MOCK sin Stripe) -->
+    <div class="card" style="background:transparent" id="mock-section" hidden>
+      <h3>Datos de la tarjeta (simulado)</h3>
+      <div class="grid">
+        <div>
+          <label class="label">Nombre en la tarjeta</label>
+          <input id="m_cardholder" class="field" placeholder="Como aparece en la tarjeta" autocomplete="cc-name">
+        </div>
+        <div>
+          <label class="label">Número de tarjeta</label>
+          <input id="m_cardNumber" class="field" inputmode="numeric" maxlength="19" placeholder="1234 1234 1234 1234" autocomplete="cc-number">
+        </div>
+        <div class="two">
+          <div>
+            <label class="label">Vencimiento (MM/YY)</label>
+            <input id="m_cardExp" class="field" inputmode="numeric" maxlength="5" placeholder="MM/YY" autocomplete="cc-exp">
+          </div>
+          <div>
+            <label class="label">CVV</label>
+            <input id="m_cardCvv" class="field" inputmode="numeric" maxlength="4" placeholder="123" autocomplete="cc-csc">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Botón pagar + estado -->
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="btnPagar" disabled>Pagar ahora</button>
+      <span id="pagoInfo" class="pill"></span>
+    </div>
+    <div id="payMsg" class="msg"></div>
 
     <!-- Historial -->
     <div class="card" style="background:transparent">
@@ -122,10 +147,40 @@ let matricula_id = null;
 let cot = null; // cotización actual
 let pagoPendienteId = null;
 
+let mode = 'stripe'; // 'stripe' | 'mock'
+
 // ===== Stripe Elements =====
 let stripe, elements, cardNumber, cardExpiry, cardCvc;
 let stripeReady = false;
 let numOK=false, expOK=false, cvcOK=false;
+
+// ===== MOCK inputs =====
+function onlyDigits(s){ return (s||'').replace(/\D+/g,''); }
+function m_validar(){
+  const name = ($('#m_cardholder').value||'').trim();
+  const num  = onlyDigits($('#m_cardNumber').value);
+  const exp  = ($('#m_cardExp').value||'').trim();
+  const cvv  = onlyDigits($('#m_cardCvv').value);
+  const numOK = num.length >= 13 && num.length <= 19;
+  const m = /^(\d{2})\/(\d{2})$/.exec(exp); let expOK = false;
+  if (m){ const mm=Number(m[1]), yy=Number(m[2]); expOK = mm>=1 && mm<=12; }
+  const cvvOK = cvv.length>=3 && cvv.length<=4;
+  return { name, num, exp, cvv, ready: !!(name && numOK && expOK && cvvOK) };
+}
+['m_cardholder','m_cardNumber','m_cardExp','m_cardCvv'].forEach(id=>{
+  const el = document.getElementById(id);
+  el.addEventListener('input', ()=>{
+    if (id==='m_cardExp'){
+      let v = el.value.replace(/[^\d]/g,'').slice(0,4);
+      if (v.length>=3) v = v.slice(0,2)+'/'+v.slice(2);
+      el.value = v;
+    }
+    if (id==='m_cardNumber'){
+      el.value = onlyDigits(el.value).slice(0,19).replace(/(\d{4})(?=\d)/g,'$1 ');
+    }
+    enablePayIfReady();
+  });
+});
 
 async function fetchJSON(url, options){
   const r = await fetch(url, options);
@@ -136,25 +191,43 @@ async function fetchJSON(url, options){
 }
 
 function enablePayIfReady(){
-  const nameOK = ($('#cardholder').value||'').trim().length>0;
-  btnPagar.disabled = !(stripeReady && matricula_id && numOK && expOK && cvcOK && nameOK);
+  if (!matricula_id) { btnPagar.disabled = true; return; }
+  if (mode==='stripe'){
+    const nameOK = ($('#cardholder').value||'').trim().length>0;
+    btnPagar.disabled = !(stripeReady && numOK && expOK && cvcOK && nameOK);
+  } else {
+    const v = m_validar();
+    btnPagar.disabled = !v.ready;
+  }
 }
 
 async function cargarEstudiante(){
   estudiante = await fetchJSON(`${API}/api/estudiantes/by-usuario/${u.id}`);
 }
 
-async function loadStripe(){
+async function initPayments(){
   try{
-    const { pk } = await fetchJSON(`${API}/api/config/stripe-pk`);
-    if (!pk) throw new Error('Stripe publishable key vacío (configurá STRIPE_PUBLISHABLE_KEY en el server).');
+    const conf = await fetchJSON(`${API}/api/config/stripe-pk`).catch(()=>({pk:''}));
+    const pk = conf?.pk || '';
+    if (!pk){
+      // MOCK MODE
+      mode = 'mock';
+      document.getElementById('mock-section').hidden = false;
+      document.getElementById('card-section').hidden = true;
+      stripeReady = true; // para habilitar botón cuando inputs mock estén OK
+      enablePayIfReady();
+      return;
+    }
+    // STRIPE MODE
+    mode = 'stripe';
+    document.getElementById('card-section').hidden = false;
+    document.getElementById('mock-section').hidden = true;
+
     stripe = Stripe(pk);
     elements = stripe.elements();
-
     cardNumber = elements.create('cardNumber');
     cardExpiry = elements.create('cardExpiry');
     cardCvc    = elements.create('cardCvc');
-
     cardNumber.mount('#card-number');
     cardExpiry.mount('#card-expiry');
     cardCvc.mount('#card-cvc');
@@ -167,7 +240,12 @@ async function loadStripe(){
     stripeReady = true;
     enablePayIfReady();
   }catch(e){
-    showPay(e.message || 'No fue posible inicializar el formulario de tarjeta.');
+    // Fallback a MOCK si falla
+    mode = 'mock';
+    document.getElementById('mock-section').hidden = false;
+    document.getElementById('card-section').hidden = true;
+    stripeReady = true;
+    enablePayIfReady();
   }
 }
 
@@ -203,8 +281,8 @@ async function cargarCotizacion(){
   matInfo.textContent = `Matrícula #${matricula_id}`;
   renderCotizacion(c);
 
-  // estado del último pago (si hay)
-  const p = await fetchJSON(`${API}/api/pagos/matricula/${matricula_id}`);
+  // último pago (si hay)
+  const p = await fetchJSON(`${API}/api/pagos/matricula/${matricula_id}`).catch(()=>null);
   if (p?.id){
     pagoPendienteId = p.id;
     pagoInfo.textContent = `Pago #${p.id} – ${p.estado}`;
@@ -220,49 +298,60 @@ btnCotizar.addEventListener('click', async ()=>{
   catch(e){ show(e.message||String(e)); }
 });
 
-// Confirmar pago real con Stripe
+// Pagar (Stripe real o MOCK)
 btnPagar.addEventListener('click', async ()=>{
   try{
     showPay('');
     btnPagar.disabled = true;
-
     if(!matricula_id){ showPay('Cotizá primero.'); btnPagar.disabled=false; return; }
-    if(!stripeReady || !numOK || !expOK || !cvcOK){ showPay('Completá los datos de la tarjeta.'); btnPagar.disabled=false; return; }
 
-    // 1) crear PaymentIntent en backend (también asegura pago pendiente)
-    const { clientSecret, pago_id } = await fetchJSON(`${API}/api/pagos/stripe/create-intent`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ matricula_id })
-    });
-    pagoPendienteId = pago_id;
+    if (mode==='stripe'){
+      // 1) crear PaymentIntent en backend
+      const { clientSecret, pago_id } = await fetchJSON(`${API}/api/pagos/stripe/create-intent`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ matricula_id })
+      });
+      pagoPendienteId = pago_id;
 
-    // 2) confirmar el pago con los datos de tarjeta (Elements)
-    const cardholder = ($('#cardholder').value||'').trim();
-    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: {
-        card: cardNumber,
-        billing_details: { name: cardholder }
+      // 2) confirmar con Elements
+      const cardholder = ($('#cardholder').value||'').trim();
+      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: cardNumber,
+          billing_details: { name: cardholder }
+        }
+      });
+      if (error) { showPay(error.message || 'No se pudo procesar el pago'); btnPagar.disabled=false; return; }
+
+      if (paymentIntent?.status === 'succeeded') {
+        await fetchJSON(`${API}/api/pagos/${pagoPendienteId}/confirmar`, { method:'POST' });
+        pagoInfo.textContent = `Pago #${pagoPendienteId} – Pagado`;
+        showPay('Pago confirmado. ¡Gracias!', true);
+        await cargarHistorial();
+      } else {
+        showPay('El pago no fue confirmado.');
+        btnPagar.disabled = false;
       }
-    });
-
-    if (error) {
-      showPay(error.message || 'No se pudo procesar el pago');
-      btnPagar.disabled = false;
       return;
     }
 
-    if (paymentIntent?.status === 'succeeded') {
-      // 3) marcar como pagado en backend
-      await fetchJSON(`${API}/api/pagos/${pagoPendienteId}/confirmar`, { method:'POST' });
-      pagoInfo.textContent = `Pago #${pagoPendienteId} – Pagado`;
-      showPay('Pago confirmado. ¡Gracias!', true);
-      await cargarHistorial();
-    } else {
-      showPay('El pago no fue confirmado.');
-      btnPagar.disabled = false;
-    }
-  } catch(e){
+    // MOCK: validar y confirmar directamente
+    const v = m_validar();
+    if (!v.ready){ showPay('Completá los datos de la tarjeta.'); btnPagar.disabled=false; return; }
+    const brand = v.num.startsWith('4') ? 'visa' : v.num.startsWith('5') ? 'mastercard' : 'other';
+    const last4 = v.num.slice(-4);
+
+    const out = await fetchJSON(`${API}/api/pagos/mock/confirm`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ matricula_id, card_brand:brand, card_last4:last4 })
+    });
+    pagoInfo.textContent = `Pago #${out.pago_id} – Pagado`;
+    showPay('Pago simulado confirmado.', true);
+    await cargarHistorial();
+
+  }catch(e){
     showPay(e.message || String(e));
+  }finally{
     btnPagar.disabled = false;
   }
 });
@@ -279,7 +368,7 @@ volver.addEventListener('click', async (e)=>{
 (async function init(){
   try{
     await cargarEstudiante();
-    await loadStripe();                 // monta los campos de tarjeta al cargar
+    await initPayments();                 // decide Stripe vs MOCK y monta inputs
     const q = new URLSearchParams(location.search);
     const mid = Number(q.get('matricula_id')) || Number(localStorage.getItem('matricula_id')) || 0;
     if(mid){ matIdInp.value = String(mid); await cargarCotizacion(); }
