@@ -13,13 +13,10 @@ r.get('/pagos/estudiante/:estudiante_id', ctl.listByEstudiante);
 // Crear/actualizar pago pendiente
 r.post('/pagos', ctl.crear);
 
-// Confirmar pago manual (post-confirmación del cliente)
+// Confirmar pago manual (si hicieras un flujo en dos pasos)
 r.post('/pagos/:pago_id/confirmar', ctl.confirmar);
 
-// Stripe (opcional): crear PaymentIntent
-r.post('/pagos/stripe/create-intent', ctl.crearIntent);
-
-// MODO DEMO (sin Stripe): crea y confirma en un paso
+// MODO DEMO (sin pasarela): crea y confirma en un paso
 r.post('/pagos/mock/confirm', ctl.mockConfirm);
 
 export default r;
