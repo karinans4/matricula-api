@@ -1,0 +1,172 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Profesor – Subir notas</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .grid{display:grid;gap:14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .pill{font-size:.8rem;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+  .right{text-align:right}
+  input.nota{width:80px;padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:transparent;color:#fff}
+</style>
+</head><body>
+  <div class="card" style="max-width:1200px">
+    <div class="row" style="justify-content:space-between">
+      <h1>Subir notas</h1>
+      <a class="btn" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub" id="bienvenida"></p>
+
+    <!-- Filtros / grupos -->
+    <div class="card" style="background:transparent">
+      <h3>Mis grupos</h3>
+      <div class="row">
+        <div class="input">
+          <label>Periodo</label>
+          <select id="periodo"></select>
+        </div>
+        <button class="btn" id="btnBuscar">Ver grupos</button>
+        <span id="info" class="pill"></span>
+      </div>
+      <div id="msg" class="msg"></div>
+
+      <table style="margin-top:10px">
+        <thead><tr>
+          <th>Período</th><th>Código</th><th>Materia</th><th>Horario</th><th></th>
+        </tr></thead>
+        <tbody id="grupos"></tbody>
+      </table>
+    </div>
+
+    <!-- Estudiantes -->
+    <div class="card" style="background:transparent">
+      <h3>Estudiantes del grupo <span id="gInfo" class="pill"></span></h3>
+      <table>
+        <thead><tr>
+          <th>Estudiante</th><th>Correo</th><th class="right">Nota (0-100)</th><th></th>
+        </tr></thead>
+        <tbody id="alumnos"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+const API = (location.origin && location.origin.startsWith('http'))
+  ? location.origin
+  : 'https://matricula-api-s1rg.onrender.com';
+
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+const roles = (u?.roles || []);
+const esProfesor = roles.includes(2);
+if (!u || !esProfesor) location.href = '/';
+
+document.getElementById('bienvenida').textContent = `Hola, ${u.nombre} (${u.correo})`;
+
+const $=s=>document.querySelector(s);
+const periodoSel=$('#periodo'), btnBuscar=$('#btnBuscar'), info=$('#info'), msg=$('#msg');
+const gruposT=$('#grupos'), alumnosT=$('#alumnos'), gInfo=$('#gInfo');
+
+let profesor, profesor_id=null;
+let grupoActual = null;
+
+function show(t, ok=false){ msg.textContent=t||''; msg.className='msg '+(ok?'ok':'error'); }
+const esc = s => (s ?? '').toString().replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+
+async function fetchJSON(url, options){
+  const r = await fetch(url, options);
+  const ct = r.headers.get('content-type')||'';
+  const data = ct.includes('application/json') ? await r.json() : null;
+  if(!r.ok) throw new Error(data?.error || data?.mensaje || `HTTP ${r.status}`);
+  return data;
+}
+
+async function cargarBasicos(){
+  // Necesitamos profesor por usuario (debe existir endpoint /api/profesores/by-usuario/:id)
+  profesor = await fetchJSON(`${API}/api/profesores/by-usuario/${u.id}`);
+  profesor_id = profesor.id;
+
+  // periodos activos
+  const ps = await fetchJSON(`${API}/api/periodos/activos`);
+  periodoSel.innerHTML = `<option value="">— Todos —</option>` + (ps||[]).map(p =>
+    `<option value="${p.id}">${esc(p.nombre)} (${esc(p.anio||p.year||'')})</option>`
+  ).join('');
+}
+
+async function cargarGrupos(){
+  show('');
+  gruposT.innerHTML = `<tr><td colspan="5">Cargando…</td></tr>`;
+  const pid = periodoSel.value ? Number(periodoSel.value) : '';
+  const qs = pid ? `?profesor_id=${profesor_id}&periodo_id=${pid}` : `?profesor_id=${profesor_id}`;
+  const rows = await fetchJSON(`${API}/api/profesor/grupos${qs}`);
+  info.textContent = `Total: ${rows.length}`;
+  gruposT.innerHTML = rows.map(g => `
+    <tr>
+      <td>${esc(`${g.periodo||''} ${g.anio||''}`.trim())}</td>
+      <td>${esc(g.codigo||'')}</td>
+      <td>${esc(g.materia||'')}</td>
+      <td>${esc(g.horario||'')}</td>
+      <td><button class="btn ver" data-id="${g.grupo_id}" data-label="${esc(g.codigo)} - ${esc(g.materia)}">Gestionar notas</button></td>
+    </tr>
+  `).join('') || `<tr><td colspan="5">No tenés grupos para ese filtro.</td></tr>`;
+}
+
+async function cargarEstudiantes(grupo_id, label){
+  alumnosT.innerHTML = `<tr><td colspan="4">Cargando…</td></tr>`;
+  const rows = await fetchJSON(`${API}/api/profesor/grupos/${grupo_id}/estudiantes`);
+  grupoActual = grupo_id;
+  gInfo.textContent = `#${grupo_id} – ${label}`;
+  alumnosT.innerHTML = rows.map(a => `
+    <tr>
+      <td>${esc(`${a.apellido||''} ${a.nombre||''}`.trim())}</td>
+      <td>${esc(a.correo||'')}</td>
+      <td class="right">
+        <input class="nota" type="number" min="0" max="100" step="0.01"
+               value="${a.nota==null?'':Number(a.nota).toFixed(2)}"
+               data-est="${a.estudiante_id}">
+      </td>
+      <td><button class="btn guardar" data-est="${a.estudiante_id}">Guardar</button></td>
+    </tr>
+  `).join('') || `<tr><td colspan="4">Sin estudiantes inscritos.</td></tr>`;
+}
+
+gruposT.addEventListener('click', async (ev)=>{
+  const t = ev.target;
+  if (!t.classList.contains('ver')) return;
+  const id = Number(t.dataset.id);
+  const label = t.dataset.label || `Grupo ${id}`;
+  try{ await cargarEstudiantes(id, label); show('', true); }
+  catch(e){ show(e.message||String(e)); }
+});
+
+alumnosT.addEventListener('click', async (ev)=>{
+  const t = ev.target;
+  if (!t.classList.contains('guardar')) return;
+  const est = Number(t.dataset.est);
+  const inp = alumnosT.querySelector(`input.nota[data-est="${est}"]`);
+  const nota = Number(inp.value);
+  if (!Number.isFinite(nota) || nota<0 || nota>100) { show('La nota debe ser 0-100.'); return; }
+
+  try{
+    const out = await fetchJSON(`${API}/api/profesor/grupos/${grupoActual}/nota`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ profesor_id, estudiante_id: est, nota })
+    });
+    show(out.mensaje || 'Nota guardada', true);
+  }catch(e){ show(e.message||String(e)); }
+});
+
+btnBuscar.addEventListener('click', async ()=>{
+  try{ await cargarGrupos(); show('', true); }
+  catch(e){ show(e.message||String(e)); }
+});
+
+(async function init(){
+  try{
+    await cargarBasicos();
+    await cargarGrupos();
+  }catch(e){ show(e.message||String(e)); }
+})();
+</script>
+</body></html>
