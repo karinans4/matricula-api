@@ -2,6 +2,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Estudiante – Pago de matrícula</title>
 <link rel="stylesheet" href="/styles.css">
+<script src="https://js.stripe.com/v3"></script>
 <style>
   .grid{display:grid;gap:14px}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -10,6 +11,9 @@
   .right{text-align:right}
   .pill{font-size:.8rem;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
   .mono{font-variant-numeric: tabular-nums;}
+  .label{font-size:.9rem;opacity:.9;margin-bottom:4px}
+  .field{padding:10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:transparent}
+  .muted{opacity:.7}
 </style>
 </head><body>
   <div class="card" style="max-width:1000px">
@@ -19,21 +23,21 @@
     </div>
     <p class="sub" id="bienvenida"></p>
 
-    <!-- Selección de matrícula -->
+    <!-- Paso 1: seleccionar matrícula -->
     <div class="card" style="background:transparent">
       <h3>Seleccionar matrícula</h3>
       <div class="row">
         <div class="input">
-          <label>Matrícula ID</label>
-          <input id="matId" type="number" placeholder="Ej: 7" min="1" style="width:200px">
+          <label class="label">Matrícula ID</label>
+          <input id="matId" type="number" placeholder="Ej: 7" min="1" class="field" style="width:200px">
         </div>
-        <button class="btn" id="btnCargar">Cargar cotización</button>
+        <button class="btn" id="btnCotizar">Cotizar</button>
         <span id="matInfo" class="pill"></span>
       </div>
       <div class="msg" id="msg"></div>
     </div>
 
-    <!-- Resumen de cobro -->
+    <!-- Paso 2: resumen de cobro -->
     <div class="card" style="background:transparent">
       <h3>Resumen</h3>
       <table>
@@ -45,14 +49,44 @@
           <tr><td><strong>Total a pagar</strong></td><td class="right mono"><strong id="total">—</strong></td></tr>
         </tbody>
       </table>
-      <div class="row" style="margin-top:10px">
-        <button class="btn" id="btnGenerar" disabled>Generar/actualizar pago</button>
-        <span id="pagoInfo" class="pill"></span>
-        <button class="btn" id="btnConfirmar" style="display:none">Simular confirmar pago</button>
+    </div>
+
+    <!-- Paso 3: datos de tarjeta (Stripe Elements) -->
+    <div class="card" style="background:transparent">
+      <h3>Datos de la tarjeta</h3>
+      <div class="grid">
+        <div>
+          <label class="label">Nombre en la tarjeta</label>
+          <input id="cardholder" class="field" placeholder="Como aparece en la tarjeta" style="width:100%">
+        </div>
+
+        <div>
+          <label class="label">Número de tarjeta</label>
+          <div id="card-number" class="field"></div>
+        </div>
+
+        <div class="row" style="gap:14px">
+          <div style="flex:1">
+            <label class="label">Vencimiento</label>
+            <div id="card-expiry" class="field"></div>
+          </div>
+          <div style="width:200px">
+            <label class="label">CVV</label>
+            <div id="card-cvc" class="field"></div>
+          </div>
+        </div>
+
+        <div class="muted">Modo prueba: usá <code>4242 4242 4242 4242</code>, cualquier fecha futura y CVC de 3 dígitos.</div>
+
+        <div class="row" style="margin-top:8px">
+          <button class="btn" id="btnPagar" disabled>Pagar ahora</button>
+          <span id="pagoInfo" class="pill"></span>
+        </div>
+        <div id="payMsg" class="msg"></div>
       </div>
     </div>
 
-    <!-- Historial del estudiante -->
+    <!-- Historial -->
     <div class="card" style="background:transparent">
       <h3>Mis pagos</h3>
       <table>
@@ -77,12 +111,16 @@ if (!u || !esEstudiante) location.href = '/';
 document.getElementById('bienvenida').textContent = `Hola, ${u.nombre} (${u.correo})`;
 
 const $=s=>document.querySelector(s);
-const matIdInp = $('#matId'), btnCargar = $('#btnCargar'), matInfo = $('#matInfo');
-const msg = $('#msg'), pagoInfo = $('#pagoInfo'), btnGenerar = $('#btnGenerar'), btnConfirmar = $('#btnConfirmar');
+const matIdInp = $('#matId'), btnCotizar = $('#btnCotizar'), matInfo = $('#matInfo');
+const msg = $('#msg'), pagoInfo = $('#pagoInfo'), btnPagar = $('#btnPagar'), payMsg = $('#payMsg');
 const costoMat = $('#costoMat'), cred = $('#cred'), precioCred = $('#precioCred'), subCred = $('#subCred'), total = $('#total');
 const histT = $('#hist');
 
-// warm-up al volver (como en tus otras páginas)
+function show(t, ok=false){ msg.textContent=t||''; msg.className='msg '+(ok?'ok':'error'); }
+function showPay(t, ok=false){ payMsg.textContent=t||''; payMsg.className='msg '+(ok?'ok':'error'); }
+const fmtCRC = (n)=> new Intl.NumberFormat('es-CR',{style:'currency',currency:'CRC',maximumFractionDigits:2}).format(Number(n||0));
+
+// warm-up al volver
 const volver = document.getElementById('volver');
 volver.addEventListener('click', async (e)=>{
   e.preventDefault();
@@ -90,14 +128,10 @@ volver.addEventListener('click', async (e)=>{
   location.href = volver.getAttribute('href');
 });
 
-function show(t, ok=false){ msg.textContent=t||''; msg.className='msg '+(ok?'ok':'error'); }
-function clearMsg(){ show(''); }
-const fmtCRC = (n)=> new Intl.NumberFormat('es-CR',{style:'currency',currency:'CRC',maximumFractionDigits:2}).format(Number(n||0));
-
 let estudiante = null;
 let matricula_id = null;
 let cot = null; // cotización actual
-let pagoActual = null;
+let pagoPendienteId = null;
 
 async function fetchJSON(url, options){
   const r = await fetch(url, options);
@@ -134,7 +168,7 @@ async function cargarHistorial(){
 }
 
 async function cargarCotizacion(){
-  clearMsg(); pagoInfo.textContent=''; btnConfirmar.style.display='none';
+  show(''); pagoInfo.textContent=''; showPay('');
   const id = Number(matIdInp.value);
   if(!id){ show('Ingresá un ID de matrícula válido.'); return; }
   const c = await fetchJSON(`${API}/api/pagos/cotizacion/${id}`);
@@ -142,50 +176,87 @@ async function cargarCotizacion(){
   localStorage.setItem('matricula_id', String(matricula_id));
   matInfo.textContent = `Matrícula #${matricula_id}`;
   renderCotizacion(c);
-  btnGenerar.disabled = false;
+  btnPagar.disabled = false;
 
-  // si ya hay un pago, muéstralo
+  // muestra estado del último pago (si hay)
   const p = await fetchJSON(`${API}/api/pagos/matricula/${matricula_id}`);
-  pagoActual = p;
   if (p?.id){
+    pagoPendienteId = p.id;
     pagoInfo.textContent = `Pago #${p.id} – ${p.estado}`;
-    if (p.estado === 'Pendiente') btnConfirmar.style.display='inline-block';
+  } else {
+    pagoPendienteId = null;
+    pagoInfo.textContent = '';
   }
 }
 
-btnCargar.addEventListener('click', async ()=>{
+btnCotizar.addEventListener('click', async ()=>{
   try{ await cargarCotizacion(); await cargarHistorial(); show('', true); }
   catch(e){ show(e.message||String(e)); }
 });
 
-btnGenerar.addEventListener('click', async ()=>{
+// ===== Stripe Elements =====
+let stripe, elements, cardNumber, cardExpiry, cardCvc;
+
+async function loadStripe(){
+  const { pk } = await fetchJSON(`${API}/api/config/stripe-pk`);
+  if (!pk) throw new Error('No está configurada la clave pública de Stripe.');
+  stripe = Stripe(pk);
+  elements = stripe.elements();
+  cardNumber = elements.create('cardNumber');
+  cardExpiry = elements.create('cardExpiry');
+  cardCvc    = elements.create('cardCvc');
+  cardNumber.mount('#card-number');
+  cardExpiry.mount('#card-expiry');
+  cardCvc.mount('#card-cvc');
+}
+
+btnPagar.addEventListener('click', async ()=>{
   try{
-    if(!matricula_id) { show('Cargá una cotización primero.'); return; }
-    const out = await fetchJSON(`${API}/api/pagos`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
+    showPay('');
+    btnPagar.disabled = true;
+
+    if(!matricula_id){ showPay('Cotizá primero.'); btnPagar.disabled=false; return; }
+    if(!stripe){ await loadStripe(); }
+
+    // 1) crear PaymentIntent en backend (también asegura pago pendiente)
+    const { clientSecret, pago_id } = await fetchJSON(`${API}/api/pagos/stripe/create-intent`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ matricula_id })
     });
-    pagoActual = out;
-    pagoInfo.textContent = `Pago #${out.pago_id} – ${out.estado} – Total ${fmtCRC(out.monto_total)}`;
-    btnConfirmar.style.display = (out.estado==='Pendiente') ? 'inline-block' : 'none';
-    show('Pago generado/actualizado', true);
-    await cargarHistorial();
-  }catch(e){ show(e.message||String(e)); }
+    pagoPendienteId = pago_id;
+
+    // 2) confirmar el pago con los datos de tarjeta (Elements)
+    const cardholder = ($('#cardholder').value||'').trim();
+    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: {
+        card: cardNumber,
+        billing_details: { name: cardholder }
+      }
+    });
+
+    if (error) {
+      showPay(error.message || 'No se pudo procesar el pago');
+      btnPagar.disabled = false;
+      return;
+    }
+
+    if (paymentIntent?.status === 'succeeded') {
+      // 3) marcar como pagado en backend
+      await fetchJSON(`${API}/api/pagos/${pagoPendienteId}/confirmar`, { method:'POST' });
+      pagoInfo.textContent = `Pago #${pagoPendienteId} – Pagado`;
+      showPay('Pago confirmado. ¡Gracias!', true);
+      await cargarHistorial();
+    } else {
+      showPay('El pago no fue confirmado.');
+      btnPagar.disabled = false;
+    }
+  } catch(e){
+    showPay(e.message || String(e));
+    btnPagar.disabled = false;
+  }
 });
 
-btnConfirmar.addEventListener('click', async ()=>{
-  try{
-    if(!pagoActual?.pago_id){ show('Generá el pago primero.'); return; }
-    const out = await fetchJSON(`${API}/api/pagos/${pagoActual.pago_id}/confirmar`, { method:'POST' });
-    pagoInfo.textContent = `Pago #${pagoActual.pago_id} – Pagado`;
-    btnConfirmar.style.display='none';
-    show(out.mensaje || 'Pago confirmado', true);
-    await cargarHistorial();
-  }catch(e){ show(e.message||String(e)); }
-});
-
-// Init: leer matrícula por querystring o localStorage
+// Init
 (async function init(){
   try{
     await cargarEstudiante();
