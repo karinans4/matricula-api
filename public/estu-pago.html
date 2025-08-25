@@ -57,7 +57,7 @@
       <div class="grid">
         <div>
           <label class="label">Nombre en la tarjeta</label>
-          <input id="cardholder" class="field" placeholder="Como aparece en la tarjeta" style="width:100%">
+          <input id="cardholder" class="field" placeholder="Como aparece en la tarjeta" style="width:100%" autocomplete="cc-name">
         </div>
 
         <div>
@@ -118,20 +118,17 @@ const histT = $('#hist');
 
 function show(t, ok=false){ msg.textContent=t||''; msg.className='msg '+(ok?'ok':'error'); }
 function showPay(t, ok=false){ payMsg.textContent=t||''; payMsg.className='msg '+(ok?'ok':'error'); }
-const fmtCRC = (n)=> new Intl.NumberFormat('es-CR',{style:'currency',currency:'CRC',maximumFractionDigits:2}).format(Number(n||0));
 
-// warm-up al volver
-const volver = document.getElementById('volver');
-volver.addEventListener('click', async (e)=>{
-  e.preventDefault();
-  for(let i=0;i<3;i++){ try{ const r=await fetch('/health',{cache:'no-store'}); if(r.ok) break; }catch{} await new Promise(r=>setTimeout(r,1200)); }
-  location.href = volver.getAttribute('href');
-});
+const fmtCRC = (n)=> new Intl.NumberFormat('es-CR',{style:'currency',currency:'CRC',maximumFractionDigits:2}).format(Number(n||0));
 
 let estudiante = null;
 let matricula_id = null;
 let cot = null; // cotización actual
 let pagoPendienteId = null;
+
+// ===== Stripe Elements (monta al cargar la página) =====
+let stripe, elements, cardNumber, cardExpiry, cardCvc;
+let stripeReady = false;
 
 async function fetchJSON(url, options){
   const r = await fetch(url, options);
@@ -143,6 +140,30 @@ async function fetchJSON(url, options){
 
 async function cargarEstudiante(){
   estudiante = await fetchJSON(`${API}/api/estudiantes/by-usuario/${u.id}`);
+}
+
+async function loadStripe(){
+  try{
+    const { pk } = await fetchJSON(`${API}/api/config/stripe-pk`);
+    if (!pk) throw new Error('Stripe publishable key vacío (configurá STRIPE_PUBLISHABLE_KEY en el server).');
+    stripe = Stripe(pk);
+    elements = stripe.elements();
+    cardNumber = elements.create('cardNumber');
+    cardExpiry = elements.create('cardExpiry');
+    cardCvc    = elements.create('cardCvc');
+    cardNumber.mount('#card-number');
+    cardExpiry.mount('#card-expiry');
+    cardCvc.mount('#card-cvc');
+    stripeReady = true;
+    habilitarBotonPagar();
+  }catch(e){
+    showPay(e.message || 'No fue posible inicializar el formulario de tarjeta.');
+  }
+}
+
+function habilitarBotonPagar(){
+  // habilitar solo si hay cotización cargada y Stripe listo
+  btnPagar.disabled = !(stripeReady && matricula_id);
 }
 
 function renderCotizacion(c){
@@ -176,7 +197,6 @@ async function cargarCotizacion(){
   localStorage.setItem('matricula_id', String(matricula_id));
   matInfo.textContent = `Matrícula #${matricula_id}`;
   renderCotizacion(c);
-  btnPagar.disabled = false;
 
   // muestra estado del último pago (si hay)
   const p = await fetchJSON(`${API}/api/pagos/matricula/${matricula_id}`);
@@ -187,6 +207,7 @@ async function cargarCotizacion(){
     pagoPendienteId = null;
     pagoInfo.textContent = '';
   }
+  habilitarBotonPagar();
 }
 
 btnCotizar.addEventListener('click', async ()=>{
@@ -194,29 +215,14 @@ btnCotizar.addEventListener('click', async ()=>{
   catch(e){ show(e.message||String(e)); }
 });
 
-// ===== Stripe Elements =====
-let stripe, elements, cardNumber, cardExpiry, cardCvc;
-
-async function loadStripe(){
-  const { pk } = await fetchJSON(`${API}/api/config/stripe-pk`);
-  if (!pk) throw new Error('No está configurada la clave pública de Stripe.');
-  stripe = Stripe(pk);
-  elements = stripe.elements();
-  cardNumber = elements.create('cardNumber');
-  cardExpiry = elements.create('cardExpiry');
-  cardCvc    = elements.create('cardCvc');
-  cardNumber.mount('#card-number');
-  cardExpiry.mount('#card-expiry');
-  cardCvc.mount('#card-cvc');
-}
-
+// Confirmar pago real con Stripe
 btnPagar.addEventListener('click', async ()=>{
   try{
     showPay('');
     btnPagar.disabled = true;
 
     if(!matricula_id){ showPay('Cotizá primero.'); btnPagar.disabled=false; return; }
-    if(!stripe){ await loadStripe(); }
+    if(!stripeReady){ showPay('Formulario de tarjeta no está listo.'); btnPagar.disabled=false; return; }
 
     // 1) crear PaymentIntent en backend (también asegura pago pendiente)
     const { clientSecret, pago_id } = await fetchJSON(`${API}/api/pagos/stripe/create-intent`, {
@@ -256,10 +262,20 @@ btnPagar.addEventListener('click', async ()=>{
   }
 });
 
+// warm-up al volver
+const volver = document.getElementById('volver');
+volver.addEventListener('click', async (e)=>{
+  e.preventDefault();
+  for(let i=0;i<3;i++){ try{ const r=await fetch('/health',{cache:'no-store'}); if(r.ok) break; }catch{} await new Promise(r=>setTimeout(r,1200)); }
+  location.href = volver.getAttribute('href');
+});
+
 // Init
 (async function init(){
   try{
     await cargarEstudiante();
+    await loadStripe();                 // <-- monta los campos de tarjeta al cargar
+
     const q = new URLSearchParams(location.search);
     const mid = Number(q.get('matricula_id')) || Number(localStorage.getItem('matricula_id')) || 0;
     if(mid){ matIdInp.value = String(mid); await cargarCotizacion(); }
