@@ -13,7 +13,6 @@
   .mono{font-variant-numeric: tabular-nums;}
   .label{font-size:.9rem;opacity:.9;margin-bottom:4px}
   .field{padding:10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:transparent}
-  .muted{opacity:.7}
 </style>
 </head><body>
   <div class="card" style="max-width:1000px">
@@ -62,21 +61,19 @@
 
         <div>
           <label class="label">Número de tarjeta</label>
-          <div id="card-number" class="field"></div>
+          <div id="card-number" class="field" aria-label="Número de tarjeta"></div>
         </div>
 
         <div class="row" style="gap:14px">
           <div style="flex:1">
             <label class="label">Vencimiento</label>
-            <div id="card-expiry" class="field"></div>
+            <div id="card-expiry" class="field" aria-label="Fecha de vencimiento"></div>
           </div>
           <div style="width:200px">
             <label class="label">CVV</label>
-            <div id="card-cvc" class="field"></div>
+            <div id="card-cvc" class="field" aria-label="Código de seguridad"></div>
           </div>
         </div>
-
-        <div class="muted">Modo prueba: usá <code>4242 4242 4242 4242</code>, cualquier fecha futura y CVC de 3 dígitos.</div>
 
         <div class="row" style="margin-top:8px">
           <button class="btn" id="btnPagar" disabled>Pagar ahora</button>
@@ -118,7 +115,6 @@ const histT = $('#hist');
 
 function show(t, ok=false){ msg.textContent=t||''; msg.className='msg '+(ok?'ok':'error'); }
 function showPay(t, ok=false){ payMsg.textContent=t||''; payMsg.className='msg '+(ok?'ok':'error'); }
-
 const fmtCRC = (n)=> new Intl.NumberFormat('es-CR',{style:'currency',currency:'CRC',maximumFractionDigits:2}).format(Number(n||0));
 
 let estudiante = null;
@@ -126,9 +122,10 @@ let matricula_id = null;
 let cot = null; // cotización actual
 let pagoPendienteId = null;
 
-// ===== Stripe Elements (monta al cargar la página) =====
+// ===== Stripe Elements =====
 let stripe, elements, cardNumber, cardExpiry, cardCvc;
 let stripeReady = false;
+let numOK=false, expOK=false, cvcOK=false;
 
 async function fetchJSON(url, options){
   const r = await fetch(url, options);
@@ -136,6 +133,11 @@ async function fetchJSON(url, options){
   const data = ct.includes('application/json') ? await r.json() : null;
   if(!r.ok) throw new Error(data?.error || data?.mensaje || `HTTP ${r.status}`);
   return data;
+}
+
+function enablePayIfReady(){
+  const nameOK = ($('#cardholder').value||'').trim().length>0;
+  btnPagar.disabled = !(stripeReady && matricula_id && numOK && expOK && cvcOK && nameOK);
 }
 
 async function cargarEstudiante(){
@@ -148,22 +150,25 @@ async function loadStripe(){
     if (!pk) throw new Error('Stripe publishable key vacío (configurá STRIPE_PUBLISHABLE_KEY en el server).');
     stripe = Stripe(pk);
     elements = stripe.elements();
+
     cardNumber = elements.create('cardNumber');
     cardExpiry = elements.create('cardExpiry');
     cardCvc    = elements.create('cardCvc');
+
     cardNumber.mount('#card-number');
     cardExpiry.mount('#card-expiry');
     cardCvc.mount('#card-cvc');
+
+    cardNumber.on('change', (e)=>{ numOK = !!e.complete; showPay(e.error?.message||''); enablePayIfReady(); });
+    cardExpiry.on('change', (e)=>{ expOK = !!e.complete; showPay(e.error?.message||''); enablePayIfReady(); });
+    cardCvc.on('change', (e)=>{ cvcOK = !!e.complete; showPay(e.error?.message||''); enablePayIfReady(); });
+    $('#cardholder').addEventListener('input', enablePayIfReady);
+
     stripeReady = true;
-    habilitarBotonPagar();
+    enablePayIfReady();
   }catch(e){
     showPay(e.message || 'No fue posible inicializar el formulario de tarjeta.');
   }
-}
-
-function habilitarBotonPagar(){
-  // habilitar solo si hay cotización cargada y Stripe listo
-  btnPagar.disabled = !(stripeReady && matricula_id);
 }
 
 function renderCotizacion(c){
@@ -198,7 +203,7 @@ async function cargarCotizacion(){
   matInfo.textContent = `Matrícula #${matricula_id}`;
   renderCotizacion(c);
 
-  // muestra estado del último pago (si hay)
+  // estado del último pago (si hay)
   const p = await fetchJSON(`${API}/api/pagos/matricula/${matricula_id}`);
   if (p?.id){
     pagoPendienteId = p.id;
@@ -207,7 +212,7 @@ async function cargarCotizacion(){
     pagoPendienteId = null;
     pagoInfo.textContent = '';
   }
-  habilitarBotonPagar();
+  enablePayIfReady();
 }
 
 btnCotizar.addEventListener('click', async ()=>{
@@ -222,7 +227,7 @@ btnPagar.addEventListener('click', async ()=>{
     btnPagar.disabled = true;
 
     if(!matricula_id){ showPay('Cotizá primero.'); btnPagar.disabled=false; return; }
-    if(!stripeReady){ showPay('Formulario de tarjeta no está listo.'); btnPagar.disabled=false; return; }
+    if(!stripeReady || !numOK || !expOK || !cvcOK){ showPay('Completá los datos de la tarjeta.'); btnPagar.disabled=false; return; }
 
     // 1) crear PaymentIntent en backend (también asegura pago pendiente)
     const { clientSecret, pago_id } = await fetchJSON(`${API}/api/pagos/stripe/create-intent`, {
@@ -274,8 +279,7 @@ volver.addEventListener('click', async (e)=>{
 (async function init(){
   try{
     await cargarEstudiante();
-    await loadStripe();                 // <-- monta los campos de tarjeta al cargar
-
+    await loadStripe();                 // monta los campos de tarjeta al cargar
     const q = new URLSearchParams(location.search);
     const mid = Number(q.get('matricula_id')) || Number(localStorage.getItem('matricula_id')) || 0;
     if(mid){ matIdInp.value = String(mid); await cargarCotizacion(); }
