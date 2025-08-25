@@ -1,0 +1,162 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Estudiante – Mis materias y notas</title>
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .grid{display:grid;gap:14px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.06)}
+  .pill{font-size:.8rem;padding:2px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.12)}
+  .right{text-align:right}
+  .muted{opacity:.75}
+</style>
+</head><body>
+  <div class="card" style="max-width:1200px">
+    <div class="row" style="justify-content:space-between">
+      <h1>Mis materias y notas</h1>
+      <a class="btn" style="width:auto" href="/dashboard.html">Volver</a>
+    </div>
+    <p class="sub" id="bienvenida"></p>
+
+    <!-- Filtros -->
+    <div class="card" style="background:transparent">
+      <h3>Filtrar</h3>
+      <div class="row">
+        <div class="input">
+          <label>Periodo</label>
+          <select id="periodo"></select>
+        </div>
+        <button class="btn" id="btnBuscar">Buscar</button>
+        <span id="info" class="pill"></span>
+      </div>
+      <div id="msg" class="msg"></div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="card" style="background:transparent">
+      <h3>Materias pagadas</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Período</th>
+            <th>Código</th>
+            <th>Materia</th>
+            <th>Profesor</th>
+            <th>Horario</th>
+            <th class="right">Créditos</th>
+            <th class="right">Nota</th>
+          </tr>
+        </thead>
+        <tbody id="tbl"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="5" class="right"><strong>Total créditos:</strong></td>
+            <td class="right" id="totCred">0</td>
+            <td class="right muted" id="prom">—</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+<script>
+const API = (location.origin && location.origin.startsWith('http'))
+  ? location.origin
+  : 'https://matricula-api-s1rg.onrender.com';
+
+const u = JSON.parse(localStorage.getItem('usuario')||'null');
+const roles = (u?.roles || []);
+const esEstudiante = roles.includes(3);
+if (!u || !esEstudiante) location.href = '/';
+
+document.getElementById('bienvenida').textContent = `Hola, ${u.nombre} (${u.correo})`;
+
+const $=s=>document.querySelector(s);
+const periodoSel = $('#periodo');
+const btnBuscar  = $('#btnBuscar');
+const info       = $('#info');
+const msg        = $('#msg');
+const tbl        = $('#tbl');
+const totCred    = $('#totCred');
+const prom       = $('#prom');
+
+function show(t, ok=false){ msg.textContent=t||''; msg.className='msg '+(ok?'ok':'error'); }
+function esc(s){ return (s??'').toString().replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+async function fetchJSON(url, options){
+  const r = await fetch(url, options);
+  const ct = r.headers.get('content-type')||'';
+  const data = ct.includes('application/json') ? await r.json() : null;
+  if(!r.ok) throw new Error(data?.error || data?.mensaje || `HTTP ${r.status}`);
+  return data;
+}
+
+async function cargarPeriodos(){
+  const ps = await fetchJSON(`${API}/api/periodos/activos`);
+  periodoSel.innerHTML = `<option value="">— Todos —</option>` + (ps||[]).map(p =>
+    `<option value="${p.id}">${esc(p.nombre)} (${esc(p.anio||p.year||'')})</option>`
+  ).join('');
+  // si tenés preferencia guardada, cargarla
+  try{
+    const pref = JSON.parse(localStorage.getItem('mis_mat_pref')||'null');
+    if (pref?.periodo) periodoSel.value = String(pref.periodo);
+  }catch{}
+}
+
+function renderRows(rows){
+  if(!rows || !rows.length){
+    tbl.innerHTML = `<tr><td colspan="7">No hay materias pagadas para los filtros seleccionados.</td></tr>`;
+    totCred.textContent = '0';
+    prom.textContent = '—';
+    return;
+  }
+
+  tbl.innerHTML = rows.map(r => `
+    <tr>
+      <td>${esc(`${r.periodo||''} ${r.anio||''}`.trim())}</td>
+      <td>${esc(r.codigo||'')}</td>
+      <td>${esc(r.materia||'')}</td>
+      <td>${esc(`${r.profesor_nombre||''} ${r.profesor_apellido||''}`.trim())}</td>
+      <td>${esc(r.horario||'')}</td>
+      <td class="right">${Number(r.creditos||0)}</td>
+      <td class="right">${r.nota==null ? '—' : Number(r.nota).toFixed(2)}</td>
+    </tr>
+  `).join('');
+
+  const tc = rows.reduce((a,x)=> a + Number(x.creditos||0), 0);
+  totCred.textContent = String(tc);
+
+  const notas = rows.map(x => x.nota).filter(v => v != null);
+  if (notas.length){
+    const p = notas.reduce((a,v)=> a + Number(v), 0) / notas.length;
+    prom.textContent = `Promedio: ${p.toFixed(2)}`;
+  } else {
+    prom.textContent = '—';
+  }
+}
+
+async function cargarMaterias(){
+  show('');
+  const periodo_id = periodoSel.value ? Number(periodoSel.value) : '';
+  const qs = periodo_id ? `?periodo_id=${periodo_id}` : '';
+  const rows = await fetchJSON(`${API}/api/mis-materias/${u.id}${qs}`);
+  info.textContent = `Total: ${rows.length}`;
+  renderRows(rows);
+  // guardar preferencia
+  localStorage.setItem('mis_mat_pref', JSON.stringify({ periodo: periodoSel.value || '' }));
+}
+
+btnBuscar.addEventListener('click', async ()=>{
+  try{ await cargarMaterias(); show('', true); }
+  catch(e){ show(e.message||String(e)); }
+});
+
+(async function init(){
+  try{
+    await cargarPeriodos();
+    await cargarMaterias();
+  }catch(e){ show(e.message||String(e)); }
+})();
+</script>
+</body></html>

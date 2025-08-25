@@ -20,6 +20,7 @@ import ofertaRoutes from './routes/oferta.routes.js';
 import basicosRoutes from './routes/basicos.routes.js';
 import pagosRoutes from './routes/pagos.routes.js';
 import configRoutes from './routes/config.routes.js';
+import misRoutes from './routes/mis.routes.js';
 
 const app = express();
 
@@ -60,6 +61,8 @@ app.use('/api', ofertaRoutes);
 app.use('/api', basicosRoutes);
 app.use('/api', pagosRoutes);
 app.use('/api', configRoutes);
+app.use('/api', misRoutes);
+
 
 // 404 API
 app.use('/api/*', (_req, res) => res.status(404).json({ error: 'Not found' }));
